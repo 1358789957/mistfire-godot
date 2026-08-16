@@ -63,6 +63,7 @@ var wave_wait := 0.0
 var _wave_cleared := false
 var _altar_danger_flashed := false
 var _had_live_shrine := false
+var _shrine_smashed := false
 var _night_lit := false
 var chest: Node3D
 var _monster_close := false
@@ -692,10 +693,13 @@ func _build_ui() -> void:
 	flash_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	play_hud.add_child(flash_label)
 
-	night_label = _label("", 22, Color(0.75, 0.82, 1.0), true)
+	night_label = _label("", 26, Color(1.0, 0.78, 0.32), true)
 	night_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	night_label.position = Vector2(960, 10)
-	night_label.size = Vector2(304, 30)
+	night_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	night_label.offset_left = -428
+	night_label.offset_top = 8
+	night_label.offset_right = -14
+	night_label.offset_bottom = 44
 	play_hud.add_child(night_label)
 
 	var mm_script := load("res://scripts/minimap.gd")
@@ -808,6 +812,7 @@ func _start_run(id: String) -> void:
 	_wave_cleared = false
 	_altar_danger_flashed = false
 	_had_live_shrine = false
+	_shrine_smashed = false
 	post_light_t = -1.0
 	result_shown = false
 	dawn_t = -1.0
@@ -1037,6 +1042,7 @@ func _clear_run() -> void:
 	_wave_cleared = false
 	_altar_danger_flashed = false
 	_had_live_shrine = false
+	_shrine_smashed = false
 
 
 func _set_day_look() -> void:
@@ -1157,10 +1163,12 @@ func _tick_siege_alerts() -> void:
 	var sn: int = _shrine_count()
 	if _had_live_shrine and sn <= 0:
 		_had_live_shrine = false
+		_shrine_smashed = true
 		_flash_hud("骨祠破", Color(0.95, 0.62, 0.36), 1.55)
 		Sfx.play("error")
 	elif sn > 0:
 		_had_live_shrine = true
+		_shrine_smashed = false
 
 
 func _spawn_wave(idx: int) -> void:
@@ -1288,7 +1296,7 @@ func _begin_dawn() -> void:
 		result_again.visible = false
 	result_title.text = "破晓"
 	result_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.5))
-	result_sub.text = "第%d天 · 火种还在" % GameState.day_index
+	result_sub.text = "第%d天 · 火种还在 · 按 E 继续" % GameState.day_index
 	Sfx.play("confirm")
 	print("dawn day=", GameState.day_index, " wood=", player.wood if player else -1, " towers=", _tower_count(), " shrine=", _shrine_count(), " keep=", GameState.territory, " altar=", altar.lit if altar else false)
 	_refresh_hud()
@@ -1350,8 +1358,10 @@ func _refresh_hud() -> void:
 		else:
 			build_label.text = "筑:火塔 %d木  %d/%d" % [cost, n, TOWER_LIMIT]
 	land_label.text = "领地  %d/1  ·  第%d天" % [GameState.territory, GameState.day_index]
+	if _shrine_count() > 0:
+		_shrine_smashed = false
 	hint_label.text = _hint_text()
-	var day_s := "第%d天" % GameState.day_index
+	var day_s: String = "第%d天" % GameState.day_index
 	if GameState.phase == GameState.Phase.NIGHT:
 		var waves: Array = _wave_counts()
 		var living_n: int = _night_living()
@@ -1359,14 +1369,48 @@ func _refresh_hud() -> void:
 			night_label.text = "%s  夜 %d/%d波  下一波 %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, WAVE_GAP - wave_wait)]
 		else:
 			night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
-	elif GameState.phase == GameState.Phase.DAWN:
-		night_label.text = day_s
+		_style_night_label(false)
 	elif post_light_t >= 0.0:
-		night_label.text = "%s  夜将至  %.0fs" % [day_s, maxf(0.0, post_light_t)]
-	elif GameState.phase == GameState.Phase.DAY:
+		var tleft: float = maxf(0.0, post_light_t)
+		night_label.text = "%s  夜将至  %.0fs" % [day_s, tleft]
+		_style_night_label(true, tleft <= 10.0)
+	elif GameState.phase == GameState.Phase.DAWN or GameState.phase == GameState.Phase.DAY:
 		night_label.text = day_s
+		_style_night_label(false)
 	else:
 		night_label.text = ""
+		_style_night_label(false)
+
+
+func _style_night_label(coming: bool, urgent: bool = false) -> void:
+	if night_label == null:
+		return
+	if coming:
+		var col: Color = Color(1.0, 0.42, 0.28) if urgent else Color(1.0, 0.78, 0.28)
+		night_label.add_theme_color_override("font_color", col)
+		night_label.add_theme_font_size_override("font_size", 26)
+	else:
+		night_label.add_theme_color_override("font_color", Color(0.75, 0.82, 1.0))
+		night_label.add_theme_font_size_override("font_size", 22)
+
+
+func _day_objective_text() -> String:
+	var bits: PackedStringArray = PackedStringArray()
+	var lit: bool = altar != null and altar.lit
+	if not lit:
+		var have: int = player.wood if player else 0
+		var need: int = maxi(0, WOOD_NEED - have)
+		bits.append("还差 %d 木点火" % need)
+	else:
+		bits.append("火种已燃 · 可建塔/祠")
+	if _shrine_smashed and _shrine_count() == 0:
+		bits.append("可重建骨祠")
+	var keep_open: bool = GameState.territory < 1
+	if camp and is_instance_valid(camp):
+		keep_open = not camp.occupied
+	if keep_open:
+		bits.append("城寨未占")
+	return " · ".join(bits)
 
 
 func _hint_text() -> String:
@@ -1383,13 +1427,7 @@ func _hint_text() -> String:
 		return "E 开箱"
 	match GameState.phase:
 		GameState.Phase.DAY:
-			if player and player.wood < WOOD_NEED and (altar == null or not altar.lit):
-				return "砍树 → 点火/建塔/祠 → 占城寨 → 守夜"
-			if altar and not altar.lit:
-				return "祭坛按 E 点燃  ·  B 建火塔/骨祠  ·  占城寨"
-			if camp and not camp.occupied:
-				return "占城寨  清卫兵后到旗帜按 E  ·  B 建塔/祠"
-			return "入夜  按 N 或等待  ·  B 建塔/祠守夜"
+			return _day_objective_text()
 		GameState.Phase.NIGHT:
 			if GameState.rune_id == "puppet":
 				if altar and altar.lit:
@@ -1411,7 +1449,7 @@ func _hint_text() -> String:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
 		GameState.Phase.DAWN:
-			return "破晓  第%d天" % GameState.day_index
+			return "破晓  第%d天  ·  按 E 继续" % GameState.day_index
 		_:
 			return ""
 
@@ -1946,8 +1984,12 @@ func _maybe_shot() -> void:
 		await _run_loop_verify()
 		get_tree().quit()
 		return
-	if shot == "day2":
+	if shot.to_lower() == "day2":
 		await _run_day2_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "dayobj":
+		await _run_dayobj_verify()
 		get_tree().quit()
 		return
 	if shot == "atk":
@@ -3536,6 +3578,115 @@ func _loop_tap(action: String) -> void:
 	await get_tree().process_frame
 
 
+func _run_dayobj_verify() -> void:
+	# Late Day 1 / Day 2 goals: remaining wood, lit/build, smashed shrine, keep.
+	# Night-coming timer stays on night_label. Dawn overlay mentions 按 E 继续.
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum DAYOBJ VERIFY")
+	lines.append("==============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	title_root.visible = false
+	play_hud.visible = true
+	_refresh_hud()
+	var d1: String = hint_label.text if hint_label else ""
+	var d1_ok: bool = d1.find("还差 8 木点火") >= 0 and d1.find("城寨未占") >= 0
+	lines.append("day1 start hint=%s" % d1)
+	print("DAYOBJ start hint=", d1)
+
+	if player:
+		player.grant_wood(3)
+	_refresh_hud()
+	var late1: String = hint_label.text if hint_label else ""
+	var late1_ok: bool = late1.find("还差 5 木点火") >= 0 and late1.find("砍树 →") < 0
+	lines.append("late day1 wood=3 hint=%s" % late1)
+	print("DAYOBJ late1 hint=", late1)
+
+	if player:
+		player.grant_wood(20)
+	_loop_warp(Vector3(2.6, 0.9, 2.2), Vector3(-1, 0, -1))
+	_try_light_altar()
+	if altar and not altar.lit:
+		altar.light_fire()
+		post_light_t = POST_LIGHT
+	_refresh_hud()
+	var lit_s: String = hint_label.text if hint_label else ""
+	var coming_s: String = night_label.text if night_label else ""
+	var lit_ok: bool = lit_s.find("火种已燃") >= 0 and lit_s.find("可建塔/祠") >= 0
+	var coming_ok: bool = coming_s.find("夜将至") >= 0
+	lines.append("lit hint=%s night=%s" % [lit_s, coming_s])
+	print("DAYOBJ lit hint=", lit_s, " night=", coming_s)
+
+	var sh: Node = _place_verify_shrine()
+	await get_tree().process_frame
+	if sh and is_instance_valid(sh):
+		while is_instance_valid(sh) and not bool(sh.get("broken")):
+			sh.smash()
+	_shrine_smashed = true
+	_refresh_hud()
+	var smash_s: String = hint_label.text if hint_label else ""
+	var smash_ok: bool = smash_s.find("可重建骨祠") >= 0
+	lines.append("smash hint=%s" % smash_s)
+	print("DAYOBJ smash hint=", smash_s)
+
+	_begin_dawn()
+	var dawn_sub: String = result_sub.text if result_sub else ""
+	var dawn_hint: String = hint_label.text if hint_label else ""
+	var dawn_ok: bool = (dawn_sub.find("按 E 继续") >= 0 or dawn_hint.find("按 E 继续") >= 0) and (result_title.text.find("破晓") >= 0)
+	var dawn_coming: String = night_label.text if night_label else ""
+	lines.append("dawn title=%s sub=%s hint=%s night=%s" % [
+		result_title.text if result_title else "", dawn_sub, dawn_hint, dawn_coming])
+	print("DAYOBJ dawn sub=", dawn_sub, " hint=", dawn_hint)
+
+	_finish_dawn()
+	_refresh_hud()
+	var d2: String = hint_label.text if hint_label else ""
+	var d2_night: String = night_label.text if night_label else ""
+	var d2_ok: bool = GameState.day_index == 2 and d2.find("火种已燃") >= 0 and d2.find("砍树 →") < 0
+	var d2_coming: bool = d2_night.find("夜将至") >= 0
+	var keep_ok: bool = d2.find("城寨未占") >= 0
+	lines.append("day2 hint=%s night=%s" % [d2, d2_night])
+	print("DAYOBJ day2 hint=", d2, " night=", d2_night)
+
+	var gaps: Array = []
+	if not d1_ok:
+		gaps.append("start-obj")
+	if not late1_ok:
+		gaps.append("late-day1")
+	if not lit_ok:
+		gaps.append("lit-obj")
+	if not coming_ok:
+		gaps.append("night-coming")
+	if not smash_ok:
+		gaps.append("shrine-rebuild")
+	if not dawn_ok:
+		gaps.append("dawn-skip")
+	if not d2_ok:
+		gaps.append("day2-obj")
+	if not d2_coming:
+		gaps.append("day2-coming")
+	if not keep_ok:
+		gaps.append("keep")
+	if gaps.is_empty():
+		lines.append("DoD: late day1 还差 N 木点火, lit 火种已燃, smash 可重建骨祠, keep 城寨未占, 夜将至, dawn 按 E 继续.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/DAYOBJ_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/DAYOBJ_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("DAYOBJ_VERIFY written\n", text)
+
+
 func _run_day2_verify() -> void:
 	# VERIFY note: night1 win -> dawn overlay -> Day 2 on the same island.
 	# Persist wood/towers/shrine/keep/trees/chest/rune. Night2 waves [4,5,6]. Night2 win -> 守住了.
@@ -3597,11 +3748,14 @@ func _run_day2_verify() -> void:
 	await get_tree().process_frame
 	_show_result(true)
 	var dawn_ok: bool = GameState.phase == GameState.Phase.DAWN and GameState.day_index == 2
-	lines.append("after night1: phase=%s day=%d dawn_title=%s again=%s" % [
+	var dawn_sub: String = result_sub.text if result_sub else ""
+	var dawn_hint: String = hint_label.text if hint_label else ""
+	var dawn_skip_ok: bool = dawn_sub.find("按 E 继续") >= 0 or dawn_hint.find("按 E 继续") >= 0
+	lines.append("after night1: phase=%s day=%d dawn_title=%s sub=%s hint=%s again=%s" % [
 		str(GameState.phase), GameState.day_index,
-		result_title.text if result_title else "",
+		result_title.text if result_title else "", dawn_sub, dawn_hint,
 		"hidden" if (result_again and not result_again.visible) else "shown"])
-	print("DAY2 dawn_ok=", dawn_ok, " day=", GameState.day_index, " phase=", GameState.phase)
+	print("DAY2 dawn_ok=", dawn_ok, " skip=", dawn_skip_ok, " day=", GameState.day_index, " phase=", GameState.phase)
 	if GameState.phase == GameState.Phase.DAWN:
 		await get_tree().create_timer(DAWN_LEN + 0.35).timeout
 	var day_ok: bool = GameState.phase == GameState.Phase.DAY and GameState.day_index == 2
@@ -3615,12 +3769,15 @@ func _run_day2_verify() -> void:
 			down1 += 1
 	var hud_s := night_label.text if night_label else ""
 	var land_s := land_label.text if land_label else ""
-	lines.append("day2 playable: phase=%s day=%d wood=%d towers=%d keep=%d altar=%s chest=%s trees_down=%d hud=%s land=%s" % [
+	var hint_s: String = hint_label.text if hint_label else ""
+	var obj_ok: bool = hint_s.find("火种已燃") >= 0 and hint_s.find("砍树 →") < 0
+	var coming_ok: bool = hud_s.find("夜将至") >= 0
+	lines.append("day2 playable: phase=%s day=%d wood=%d towers=%d keep=%d altar=%s chest=%s trees_down=%d hud=%s land=%s hint=%s" % [
 		str(GameState.phase), GameState.day_index,
 		player.wood if player else -1, _tower_count(), GameState.territory,
 		"Y" if (altar and altar.lit) else "N", "Y" if (chest and chest.opened) else "N",
-		down1, hud_s, land_s])
-	print("DAY2 day_ok=", day_ok, " persist=", persist_ok, " hud=", hud_s)
+		down1, hud_s, land_s, hint_s])
+	print("DAY2 day_ok=", day_ok, " persist=", persist_ok, " hud=", hud_s, " hint=", hint_s)
 
 	_begin_night()
 	await get_tree().create_timer(0.2).timeout
@@ -3651,6 +3808,12 @@ func _run_day2_verify() -> void:
 		gaps.append("trees")
 	if hud_s.find("第2天") < 0 and land_s.find("第2天") < 0:
 		gaps.append("hud-day")
+	if not dawn_skip_ok:
+		gaps.append("dawn-skip")
+	if not obj_ok:
+		gaps.append("day2-obj")
+	if not coming_ok:
+		gaps.append("night-coming")
 	if n2_living < 4:
 		gaps.append("night2-harder")
 	if not final_ok:
