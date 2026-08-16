@@ -14,6 +14,10 @@ var _ring_mat: StandardMaterial3D
 var _body_mats: Array = []
 var _flame: Node3D
 var _light: OmniLight3D
+var last_embers: int = 0
+var shot_n: int = 0
+var last_place_flash: bool = false
+var place_flash_t: float = 0.0
 
 
 func setup(pos: Vector3, p_yaw: float = 0.0, as_ghost: bool = false) -> void:
@@ -94,6 +98,11 @@ func setup(pos: Vector3, p_yaw: float = 0.0, as_ghost: bool = false) -> void:
 
 	if as_ghost:
 		_set_ghost_tint(true)
+	elif GameState.rune_id == "precise":
+		# teal rim so 精密 towers read as the measured pair, not a silent buff
+		if _ring_mat:
+			_ring_mat.albedo_color = Color(0.22, 0.82, 0.72, 0.24)
+			_ring_mat.emission = Color(0.18, 0.72, 0.64)
 
 
 func set_place_ok(ok: bool) -> void:
@@ -113,22 +122,45 @@ func _set_ghost_tint(ok: bool) -> void:
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
 
+func flash_place() -> void:
+	last_place_flash = true
+	place_flash_t = 0.42
+	if _light:
+		_light.light_energy = 6.4
+	if _ring_mat:
+		var c := Color(0.32, 0.95, 0.86, 0.62) if GameState.rune_id == "precise" else Color(1.0, 0.72, 0.28, 0.55)
+		_ring_mat.albedo_color = c
+		_ring_mat.emission = c
+	if _flame:
+		_flame.scale = Vector3(1.55, 1.65, 1.55)
+	print("place_flash tower")
+
+
 func _process(delta: float) -> void:
 	if ghost:
 		return
 	_pulse += delta * 5.5
-	if _flame:
-		var s := 1.0 + sin(_pulse) * 0.1
-		_flame.scale = Vector3(s, 1.0 + sin(_pulse * 1.4) * 0.14, s)
-	if _light:
-		_light.light_energy = 2.2 + sin(_pulse * 1.6) * 0.45
-	if _ring_mat:
-		_ring_mat.albedo_color.a = 0.16 + sin(_pulse) * 0.05
+	if place_flash_t > 0.0:
+		place_flash_t = maxf(0.0, place_flash_t - delta)
+		var u: float = place_flash_t / 0.42
+		if _light:
+			_light.light_energy = 2.2 + 4.2 * u
+		if _ring_mat:
+			_ring_mat.albedo_color.a = 0.16 + 0.46 * u
+	else:
+		if _flame:
+			var s := 1.0 + sin(_pulse) * 0.1
+			_flame.scale = Vector3(s, 1.0 + sin(_pulse * 1.4) * 0.14, s)
+		if _light:
+			_light.light_energy = 2.2 + sin(_pulse * 1.6) * 0.45
+		if _ring_mat:
+			_ring_mat.albedo_color.a = 0.16 + sin(_pulse) * 0.05
 
 	if GameState.phase != GameState.Phase.NIGHT:
 		return
 	_dot_t += delta
-	if _dot_t < DOT_INT:
+	var gap: float = GameState.tower_interval()
+	if _dot_t < gap:
 		return
 	_dot_t = 0.0
 	var tree := get_tree()
@@ -149,13 +181,7 @@ func _process(delta: float) -> void:
 		_shoot(best)
 
 
-func _shoot(e: Node) -> void:
-	var origin := global_position + Vector3(0.0, 1.72, 0.0)
-	var dest: Vector3 = e.global_position + Vector3(0.0, 0.9, 0.0)
-	var dir: Vector3 = dest - origin
-	dir.y = 0.0
-	if dir.length() < 0.05:
-		dir = Vector3(0, 0, 1)
+func _spawn_ember(origin: Vector3, dir: Vector3) -> void:
 	var ps := load("res://scripts/projectile.gd")
 	var bolt: Node3D = ps.new()
 	var host: Node = get_parent()
@@ -163,9 +189,30 @@ func _shoot(e: Node) -> void:
 		host = self
 	host.add_child(bolt)
 	bolt.setup("ember", origin, dir, DOT, 1.1, self, "enemy")
+
+
+func _shoot(e: Node) -> void:
+	var origin := global_position + Vector3(0.0, 1.72, 0.0)
+	var dest: Vector3 = e.global_position + Vector3(0.0, 0.9, 0.0)
+	var dir: Vector3 = dest - origin
+	dir.y = 0.0
+	if dir.length() < 0.05:
+		dir = Vector3(0, 0, 1)
+	dir = dir.normalized()
+	var n: int = GameState.tower_embers()
+	last_embers = n
+	shot_n += 1
+	_spawn_ember(origin, dir)
+	if n >= 2:
+		var side: Vector3 = dir.cross(Vector3.UP)
+		if side.length() < 0.01:
+			side = Vector3(1.0, 0.0, 0.0)
+		side = side.normalized()
+		var dir2: Vector3 = (dir + side * 0.28).normalized()
+		_spawn_ember(origin + side * 0.32, dir2)
 	Sfx.play("ember")
 	if _flame:
 		_flame.scale = Vector3(1.45, 1.55, 1.45)
 	if _light:
 		_light.light_energy = 4.2
-	print("tower_shot at ", e.global_position)
+	print("tower_shot embers=", n, " at ", e.global_position)

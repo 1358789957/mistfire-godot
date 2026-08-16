@@ -22,6 +22,8 @@ var _base_albedos: Array = []
 var _flame: Node3D
 var _light: OmniLight3D
 var _visual: Node3D
+var last_place_flash: bool = false
+var place_flash_t: float = 0.0
 
 
 func setup(pos: Vector3, p_yaw: float = 0.0, as_ghost: bool = false) -> void:
@@ -29,7 +31,7 @@ func setup(pos: Vector3, p_yaw: float = 0.0, as_ghost: bool = false) -> void:
 	yaw = p_yaw
 	rotation.y = yaw
 	ghost = as_ghost
-	hp = MAX_HP
+	hp = GameState.shrine_hp()
 	broken = false
 	collision_layer = 0 if as_ghost else 1
 	collision_mask = 0
@@ -202,6 +204,18 @@ func _set_ghost_tint(ok: bool) -> void:
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
 
+func flash_place() -> void:
+	last_place_flash = true
+	place_flash_t = 0.42
+	if _light:
+		_light.light_energy = 5.4
+	if _ring_mat:
+		var c := Color(0.32, 0.95, 0.86, 0.58) if GameState.rune_id == "precise" else Color(1.0, 0.82, 0.42, 0.52)
+		_ring_mat.albedo_color = c
+		_ring_mat.emission = c
+	print("place_flash shrine")
+
+
 func smash() -> bool:
 	if ghost or broken:
 		return true
@@ -227,13 +241,21 @@ func _process(delta: float) -> void:
 	if ghost or broken:
 		return
 	_pulse += delta * 5.2
-	if _flame:
-		var s := 1.0 + sin(_pulse) * 0.12
-		_flame.scale = Vector3(s, 1.0 + sin(_pulse * 1.35) * 0.16, s)
-	if _light:
-		_light.light_energy = 1.55 + sin(_pulse * 1.5) * 0.35
-	if _ring_mat:
-		_ring_mat.albedo_color.a = 0.14 + sin(_pulse) * 0.05
+	if place_flash_t > 0.0:
+		place_flash_t = maxf(0.0, place_flash_t - delta)
+		var u: float = place_flash_t / 0.42
+		if _light:
+			_light.light_energy = 1.55 + 3.8 * u
+		if _ring_mat:
+			_ring_mat.albedo_color.a = 0.14 + 0.44 * u
+	else:
+		if _flame:
+			var s := 1.0 + sin(_pulse) * 0.12
+			_flame.scale = Vector3(s, 1.0 + sin(_pulse * 1.35) * 0.16, s)
+		if _light:
+			_light.light_energy = 1.55 + sin(_pulse * 1.5) * 0.35
+		if _ring_mat:
+			_ring_mat.albedo_color.a = 0.14 + sin(_pulse) * 0.05
 	if _shake > 0.0 and _visual:
 		_shake = maxf(0.0, _shake - delta * 2.2)
 		_visual.rotation_degrees.z = sin(Time.get_ticks_msec() * 0.05) * _shake * 14.0
