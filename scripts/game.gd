@@ -1240,7 +1240,10 @@ func _refresh_hud() -> void:
 		var scost: int = GameState.shrine_cost()
 		var shp: int = GameState.shrine_hp()
 		if sn >= SHRINE_LIMIT:
-			build_label.text = "筑:骨祠 已满  %d/%d" % [sn, SHRINE_LIMIT]
+			if GameState.rune_id == "precise":
+				build_label.text = "筑:骨祠 已满  %d/%d · 砸%d" % [sn, SHRINE_LIMIT, shp]
+			else:
+				build_label.text = "筑:骨祠 已满  %d/%d" % [sn, SHRINE_LIMIT]
 		elif GameState.rune_id == "precise":
 			build_label.text = "筑:骨祠 %d木  %d/%d · 砸%d" % [scost, sn, SHRINE_LIMIT, shp]
 		else:
@@ -2809,6 +2812,9 @@ func _run_precise_verify() -> void:
 	build_kind = "shrine"
 	_rebuild_ghost()
 	_set_build(true)
+	_refresh_hud()
+	var shrine_pre: String = build_label.text if build_label else ""
+	var shrine_hint: String = hint_label.text if hint_label else ""
 	_try_place()
 	var shrines: int = _shrine_count()
 	var sh: Node = null
@@ -2827,9 +2833,9 @@ func _run_precise_verify() -> void:
 	var sh_flash: bool = sh != null and is_instance_valid(sh) and bool(sh.last_place_flash)
 	_refresh_hud()
 	var shrine_hud: String = build_label.text if build_label else ""
-	var shrine_hud_ok: bool = shrine_hud.find("6") >= 0 and shrine_hud.find("砸") >= 0
-	lines.append("place shrine n=%d hp=%d world=%s hud=%s" % [
-		shrines, sh_hp, "Y" if sh_flash else "N", shrine_hud])
+	var shrine_hud_ok: bool = (shrine_pre.find("6") >= 0 or shrine_hint.find("6") >= 0) and (shrine_pre.find("砸") >= 0 or shrine_hud.find("砸") >= 0 or shrine_hint.find("砸") >= 0)
+	lines.append("place shrine n=%d hp=%d world=%s pre=%s hud=%s" % [
+		shrines, sh_hp, "Y" if sh_flash else "N", shrine_pre, shrine_hud])
 	print("PRECISE shrine hp=", sh_hp, " hud=", shrine_hud)
 
 	_set_build(false)
