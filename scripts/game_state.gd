@@ -20,7 +20,7 @@ const RUNES := {
 	"power": {"name": "力量", "en": "Might", "passive": "重击劈砍", "color": Color(0.86, 0.24, 0.18)},
 	"puppet": {"name": "机械傀儡", "en": "Puppet", "passive": "傀儡伐木/守夜", "color": Color(0.86, 0.58, 0.18)},
 	"precise": {"name": "精密", "en": "Precision", "passive": "巧筑迅伐", "color": Color(0.16, 0.68, 0.64)},
-	"life": {"name": "生命", "en": "Life", "passive": "生机回春", "color": Color(0.30, 0.72, 0.32)},
+	"life": {"name": "生命", "en": "Life", "passive": "厚血/核心还在", "color": Color(0.30, 0.72, 0.32)},
 }
 
 const CHARACTER_ORDER := ["knight", "barbarian", "mage", "rogue", "rogue_hooded"]

@@ -41,6 +41,8 @@ var wood_label: Label
 var hp_label: Label
 var rune_label: Label
 var hint_label: Label
+var flash_label: Label
+var flash_t := 0.0
 var night_label: Label
 var build_label: Label
 var land_label: Label
@@ -611,10 +613,10 @@ func _build_ui() -> void:
 			"precise":
 				extra = "火塔仅需 4 木 · B切骨祠\n砍树、放置更快"
 			"life":
-				extra = "生命上限 120\n脱战缓慢回血"
+				extra = "生命上限 120 · 受伤回春\n夜濒死一次 核心还在"
 		var ex := _label(extra, 16, Color(0.78, 0.76, 0.7))
-		ex.position = Vector2(20, 180)
-		ex.size = Vector2(240, 70)
+		ex.position = Vector2(20, 176)
+		ex.size = Vector2(240, 82)
 		ex.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(ex)
 
@@ -672,6 +674,17 @@ func _build_ui() -> void:
 	hint_label.offset_top = -64
 	hint_label.offset_bottom = -22
 	play_hud.add_child(hint_label)
+
+	flash_label = _label("", 52, Color(0.55, 0.96, 0.62), true)
+	flash_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	flash_label.set_anchors_preset(Control.PRESET_CENTER)
+	flash_label.offset_left = -320
+	flash_label.offset_right = 320
+	flash_label.offset_top = -168
+	flash_label.offset_bottom = -88
+	flash_label.visible = false
+	flash_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	play_hud.add_child(flash_label)
 
 	night_label = _label("", 22, Color(0.75, 0.82, 1.0), true)
 	night_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -797,6 +810,10 @@ func _start_run(id: String) -> void:
 	rune_root.visible = false
 	result_root.visible = false
 	play_hud.visible = true
+	flash_t = 0.0
+	if flash_label:
+		flash_label.visible = false
+		flash_label.text = ""
 	_clear_charsel_lineup()
 	_set_day_look()
 	_reset_trees()
@@ -828,6 +845,7 @@ func _spawn_player() -> void:
 	player.cam_yaw = cam_yaw
 	player.died.connect(_on_player_died)
 	player.wood_gained.connect(_on_wood)
+	player.core_saved.connect(_on_core_saved)
 	_ensure_puppet_golem()
 
 
@@ -891,6 +909,38 @@ func _on_player_died() -> void:
 	if GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
 	_show_result(false)
+
+
+func _on_core_saved() -> void:
+	_flash_hud("核心还在", Color(0.48, 0.96, 0.58), 1.85)
+	Sfx.play("ember")
+	_refresh_hud()
+
+
+func _flash_hud(text: String, col: Color, dur := 1.75) -> void:
+	if flash_label == null:
+		return
+	flash_label.text = text
+	flash_label.add_theme_color_override("font_color", col)
+	flash_label.modulate = Color(1, 1, 1, 1)
+	flash_label.visible = true
+	flash_t = dur
+	print("hud_flash ", text)
+
+
+func _tick_hud_flash(delta: float) -> void:
+	if flash_t <= 0.0:
+		return
+	flash_t = maxf(0.0, flash_t - delta)
+	if flash_label == null:
+		return
+	if flash_t <= 0.0:
+		flash_label.visible = false
+		return
+	var a := 1.0
+	if flash_t < 0.40:
+		a = clampf(flash_t / 0.40, 0.0, 1.0)
+	flash_label.modulate.a = a
 
 
 func _reset_trees() -> void:
@@ -981,6 +1031,8 @@ func _begin_night() -> void:
 	_set_night_look()
 	_spawn_wave(0)
 	_ensure_puppet_golem()
+	if player and is_instance_valid(player):
+		player.arm_core_save()
 	Sfx.play("night")
 	_refresh_hud()
 
@@ -1146,7 +1198,7 @@ func _refresh_hud() -> void:
 			wood_label.text = "木材  %d" % player.wood
 		else:
 			wood_label.text = "木材  %d / %d" % [player.wood, WOOD_NEED]
-		hp_label.text = "生命  %d" % int(ceili(player.hp))
+		hp_label.text = "生命  %d/%d" % [int(ceili(player.hp)), int(ceili(player.max_hp))]
 		if char_label:
 			char_label.text = "角色  %s · %s" % [GameState.character_name(), GameState.character_kit()]
 		rune_label.text = "符文  %s  ·  %s" % [GameState.rune_name(), GameState.rune_passive()]
@@ -1200,6 +1252,10 @@ func _hint_text() -> String:
 				if altar and altar.lit:
 					return "守夜  Space 攻击  ·  傀儡守夜"
 				return "守夜  Space 攻击  ·  傀儡守夜  ·  火种未燃"
+			if GameState.rune_id == "life":
+				if altar and altar.lit:
+					return "守夜  Space 攻击  ·  核心还在"
+				return "守夜  Space 攻击  ·  核心还在  ·  火种未燃"
 			if altar and altar.lit:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
@@ -1426,6 +1482,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_tick_hud_flash(delta)
 	if GameState.phase == GameState.Phase.CHARSEL:
 		_frame_charsel_cam()
 		return
@@ -1746,6 +1803,10 @@ func _maybe_shot() -> void:
 		return
 	if shot == "golem":
 		await _run_golem_verify()
+		get_tree().quit()
+		return
+	if shot == "life":
+		await _run_life_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2337,6 +2398,123 @@ func _run_golem_verify() -> void:
 		out.store_string(text)
 		out.close()
 	print("GOLEM_VERIFY written\n", text)
+
+
+func _run_life_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum LIFE VERIFY")
+	lines.append("============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("life")
+	await get_tree().create_timer(0.18).timeout
+	_atk_clear_mobs()
+	var hud_s: String = rune_label.text if rune_label else ""
+	var max_ok := player != null and player.max_hp >= 119.0
+	var hud_ok := hud_s.find("厚血") >= 0 and hud_s.find("核心") >= 0
+	lines.append("day max_hp=%.0f hud=%s" % [player.max_hp if player else -1.0, hud_s])
+	print("LIFE spawn max_hp=", player.max_hp if player else -1, " hud=", hud_s)
+
+	var hp0 := player.hp
+	player.invuln = 0.0
+	player.take_hit(20.0)
+	var hp1 := player.hp
+	var absorbed := hp0 - hp1
+	var pulse_ok := player.last_hurt_pulse and player.heal_pulse_t > 0.0
+	var dr_ok := absorbed > 0.4 and absorbed < 19.2
+	lines.append("hurt pulse=%s hp %.0f->%.0f absorbed=%.1f (want <20)" % [
+		"Y" if pulse_ok else "N", hp0, hp1, absorbed])
+	print("LIFE hurt pulse=", pulse_ok, " hp=", hp0, "->", hp1, " absorbed=", absorbed)
+
+	if altar and not altar.lit:
+		altar.light_fire()
+	_loop_warp(Vector3(0.4, 0.9, 0.6), Vector3(0, 0, -1))
+	player.hp = 70.0
+	player.combat_t = 0.0
+	player.invuln = 2.0
+	await get_tree().create_timer(1.15).timeout
+	var net_ok := player.near_life_net and player.hp > 70.4
+	lines.append("altar net=%s hp %.1f (from 70, combat_t=%.1f)" % [
+		"Y" if net_ok else "N", player.hp, player.combat_t])
+	print("LIFE net=", player.near_life_net, " hp=", player.hp)
+
+	player.invuln = 0.0
+	player.hp = 6.0
+	player.take_hit(80.0)
+	var day_die := player.hp <= 0.0 and not player.last_core_save
+	var day_flash := flash_label.text if flash_label and flash_label.visible else ""
+	lines.append("day lethal die=%s save=%s flash=%s" % [
+		"Y" if day_die else "N", "Y" if player.last_core_save else "N", day_flash])
+	print("LIFE day lethal hp=", player.hp, " save=", player.last_core_save)
+
+	_start_run("life")
+	await get_tree().create_timer(0.12).timeout
+	_begin_night()
+	_atk_clear_mobs()
+	await get_tree().process_frame
+	_refresh_hud()
+	var night_hint: String = hint_label.text if hint_label else ""
+	var hint_ok := night_hint.find("核心") >= 0
+	_loop_warp(Vector3(8.2, 0.9, 8.0), Vector3(0, 0, 1))
+	player.invuln = 0.0
+	player.hp = 8.0
+	player.last_core_save = false
+	player.take_hit(80.0)
+	var saved := player.last_core_save and player.hp >= 11.0 and player.hp < 20.0
+	var flash_s: String = flash_label.text if flash_label else ""
+	var flash_ok := flash_s.find("核心还在") >= 0 and flash_label.visible
+	lines.append("night save=%s hp=%.0f hint=%s flash=%s" % [
+		"Y" if saved else "N", player.hp, night_hint, flash_s])
+	print("LIFE night save=", saved, " hp=", player.hp, " flash=", flash_s, " hint=", night_hint)
+	await get_tree().create_timer(0.35).timeout
+	await _save_shot("/workspace/shot-life-core.png")
+
+	await get_tree().create_timer(1.25).timeout
+	player.invuln = 0.0
+	player.take_hit(80.0)
+	var second_die := player.hp <= 0.0
+	lines.append("second lethal die=%s hp=%.0f phase=%s" % [
+		"Y" if second_die else "N", player.hp, str(GameState.phase)])
+	print("LIFE second die=", second_die, " hp=", player.hp, " phase=", GameState.phase)
+
+	var gaps: Array = []
+	if not max_ok:
+		gaps.append("max-hp")
+	if not hud_ok:
+		gaps.append("hud")
+	if not pulse_ok:
+		gaps.append("pulse")
+	if not dr_ok:
+		gaps.append("incoming")
+	if not net_ok:
+		gaps.append("altar-net")
+	if not day_die:
+		gaps.append("day-lethal")
+	if not hint_ok:
+		gaps.append("hint")
+	if not saved:
+		gaps.append("night-save")
+	if not flash_ok:
+		gaps.append("flash")
+	if not second_die:
+		gaps.append("second-die")
+	if gaps.is_empty():
+		lines.append("DoD: 生命 has 120 hp, visible hurt pulse, altar-net tick, night 核心还在 once, then death.")
+	else:
+		var gap := ""
+		for i in gaps.size():
+			if i > 0:
+				gap += ", "
+			gap += str(gaps[i])
+		lines.append("DoD GAPS: " + gap)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/LIFE_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/LIFE_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("LIFE_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:
