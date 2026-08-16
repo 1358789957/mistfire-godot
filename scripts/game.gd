@@ -2,6 +2,7 @@ extends Node3D
 
 const Kaykit := preload("res://scripts/kaykit.gd")
 const Island := preload("res://scripts/island.gd")
+const Mats := preload("res://scripts/mats.gd")
 
 const WOOD_NEED := 8
 const NIGHT_LEN := 52.0
@@ -391,7 +392,7 @@ func _make_ridge() -> void:
 		[Vector3(47.6, 0.20, 37.0), 0.85],
 		[Vector3(43.0, 0.20, 40.5), 1.15],
 	]
-	var mat := Mats.textured(Mats.dirt_tex(), Color(0.90, 0.80, 0.64), Vector3(2, 1, 2))
+	var mat: StandardMaterial3D = Mats.textured(Mats.dirt_tex(), Color(0.90, 0.80, 0.64), Vector3(2, 1, 2))
 	for b in berms:
 		var body := StaticBody3D.new()
 		body.position = b[0]
