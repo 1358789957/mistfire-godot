@@ -43,6 +43,9 @@ var rune_label: Label
 var hint_label: Label
 var flash_label: Label
 var flash_t := 0.0
+var cam_punch_t := 0.0
+var cam_punch_str := 0.0
+var last_cam_punch := false
 var night_label: Label
 var build_label: Label
 var land_label: Label
@@ -607,7 +610,7 @@ func _build_ui() -> void:
 		var extra := ""
 		match id:
 			"power":
-				extra = "近战可按住连砍\n伤害提高，首杀加速"
+				extra = "重击更快更痛\n击杀掠杀 · 夜行加速"
 			"puppet":
 				extra = "傀儡伐木/守夜\n护盾挡住一次伤害"
 			"precise":
@@ -653,7 +656,7 @@ func _build_ui() -> void:
 	char_label.size = Vector2(350, 24)
 	play_hud.add_child(char_label)
 
-	rune_label = _label("符文  力量  ·  重击劈砍", 18, Color(0.88, 0.86, 0.8))
+	rune_label = _label("符文  力量  ·  重击/掠杀", 18, Color(0.88, 0.86, 0.8))
 	rune_label.position = Vector2(34, 102)
 	rune_label.size = Vector2(350, 24)
 	play_hud.add_child(rune_label)
@@ -811,6 +814,9 @@ func _start_run(id: String) -> void:
 	result_root.visible = false
 	play_hud.visible = true
 	flash_t = 0.0
+	cam_punch_t = 0.0
+	cam_punch_str = 0.0
+	last_cam_punch = false
 	if flash_label:
 		flash_label.visible = false
 		flash_label.text = ""
@@ -846,6 +852,7 @@ func _spawn_player() -> void:
 	player.died.connect(_on_player_died)
 	player.wood_gained.connect(_on_wood)
 	player.core_saved.connect(_on_core_saved)
+	player.power_struck.connect(_on_power_struck)
 	_ensure_puppet_golem()
 
 
@@ -917,6 +924,19 @@ func _on_core_saved() -> void:
 	_refresh_hud()
 
 
+func _on_power_struck(killed: bool) -> void:
+	if killed:
+		_flash_hud("掠杀", Color(1.0, 0.48, 0.20), 1.15)
+		cam_punch_t = 0.24
+		cam_punch_str = 0.48
+		Sfx.play("smash")
+	else:
+		cam_punch_t = 0.12
+		cam_punch_str = 0.20
+	last_cam_punch = true
+	_refresh_hud()
+
+
 func _flash_hud(text: String, col: Color, dur := 1.75) -> void:
 	if flash_label == null:
 		return
@@ -926,6 +946,19 @@ func _flash_hud(text: String, col: Color, dur := 1.75) -> void:
 	flash_label.visible = true
 	flash_t = dur
 	print("hud_flash ", text)
+
+
+func _apply_cam_punch(delta: float) -> void:
+	if cam_punch_t <= 0.0 or camera == null:
+		return
+	cam_punch_t = maxf(0.0, cam_punch_t - delta)
+	var u := cam_punch_t / 0.24
+	var jolt := Vector3(
+		sin(Time.get_ticks_msec() * 0.09) * cam_punch_str * u,
+		cam_punch_str * 0.62 * u,
+		-cam_punch_str * 0.85 * u
+	)
+	camera.position += jolt
 
 
 func _tick_hud_flash(delta: float) -> void:
@@ -1256,6 +1289,10 @@ func _hint_text() -> String:
 				if altar and altar.lit:
 					return "守夜  Space 攻击  ·  核心还在"
 				return "守夜  Space 攻击  ·  核心还在  ·  火种未燃"
+			if GameState.rune_id == "power":
+				if altar and altar.lit:
+					return "守夜  Space 攻击  ·  重击/掠杀"
+				return "守夜  Space 攻击  ·  重击/掠杀  ·  火种未燃"
 			if altar and altar.lit:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
@@ -1662,6 +1699,7 @@ func _process(delta: float) -> void:
 		cam_pivot.rotation.y = cam_yaw
 		camera.fov = 50.0
 		camera.position = Vector3(0, 9.4, 12.4)
+		_apply_cam_punch(delta)
 		var look := player.global_position + Vector3(0, 1.05, 0)
 		camera.look_at(look)
 
@@ -1807,6 +1845,10 @@ func _maybe_shot() -> void:
 		return
 	if shot == "life":
 		await _run_life_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "power":
+		await _run_power_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2513,6 +2555,156 @@ func _run_life_verify() -> void:
 		out.store_string(text)
 		out.close()
 	print("LIFE_VERIFY written\n", text)
+
+
+func _power_count_swings(rune: String) -> Dictionary:
+	GameState.character_id = "knight"
+	_start_run(rune)
+	await get_tree().create_timer(0.12).timeout
+	_begin_night()
+	_atk_clear_mobs()
+	wave_i = 99
+	night_t = 80.0
+	await get_tree().process_frame
+	_refresh_hud()
+	_loop_warp(Vector3(10.0, 0.9, 10.0), Vector3(0, 0, -1))
+	player.invuln = 60.0
+	player.hp = 60.0
+	player.last_kill_burst = false
+	player.last_heavy = false
+	player.last_kill_heal = 0.0
+	var es := load("res://scripts/enemy.gd")
+	var bait: Node = es.new()
+	world.add_child(bait)
+	bait.setup(_on_ground(10.0, 8.55), altar, player, "night", "warrior")
+	await get_tree().process_frame
+	var hp0: float = float(bait.hp)
+	var kit_d: Dictionary = player.kit()
+	var dmg: float = float(kit_d["dmg"])
+	var cd: float = float(kit_d["cd"])
+	var swings := 0
+	var first_hp: float = hp0
+	while swings < 8:
+		if bait == null or not is_instance_valid(bait) or bool(bait.dead):
+			break
+		player.attack_cd = 0.0
+		player.do_attack()
+		swings += 1
+		await get_tree().process_frame
+		if swings == 1 and is_instance_valid(bait) and not bool(bait.dead):
+			first_hp = float(bait.hp)
+		if bait == null or not is_instance_valid(bait) or bool(bait.dead):
+			break
+	var hp1: float = 0.0
+	var dead: bool = true
+	if bait != null and is_instance_valid(bait):
+		hp1 = float(bait.hp)
+		dead = bool(bait.dead)
+		if not dead:
+			bait.queue_free()
+	return {
+		"swings": swings,
+		"hp0": hp0,
+		"hp1": hp1,
+		"first_hp": first_hp,
+		"dead": dead,
+		"dmg": dmg,
+		"cd": cd,
+		"heal": float(player.last_kill_heal),
+		"burst": bool(player.last_kill_burst),
+		"heavy": bool(player.last_heavy),
+		"haste": float(player.kill_haste_t),
+		"hp": float(player.hp),
+		"spd": float(player.move_speed()),
+	}
+
+
+func _run_power_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum POWER VERIFY")
+	lines.append("=============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	await get_tree().create_timer(0.15).timeout
+	_atk_clear_mobs()
+	var hud_s: String = rune_label.text if rune_label else ""
+	var hud_ok: bool = hud_s.find("重击") >= 0 and hud_s.find("掠杀") >= 0
+	lines.append("day hud=%s" % hud_s)
+	print("POWER hud=", hud_s)
+
+	_begin_night()
+	_atk_clear_mobs()
+	wave_i = 99
+	await get_tree().process_frame
+	_refresh_hud()
+	var night_hint: String = hint_label.text if hint_label else ""
+	var hint_ok: bool = night_hint.find("重击") >= 0 and night_hint.find("掠杀") >= 0
+	lines.append("night hint=%s" % night_hint)
+	print("POWER hint=", night_hint)
+
+	var power_row: Dictionary = await _power_count_swings("power")
+	var flash_s: String = flash_label.text if flash_label else ""
+	var flash_ok: bool = flash_s.find("掠杀") >= 0 and flash_label.visible
+	var punch_ok: bool = last_cam_punch
+	var burst_ok: bool = bool(power_row["burst"]) and bool(power_row["heavy"])
+	var heal_ok: bool = float(power_row["heal"]) > 0.4
+	var spd_ok: bool = float(power_row["spd"]) > 7.4
+	lines.append("power swings=%d hp %.0f->%.0f (first %.0f) dmg=%.1f cd=%.2f dead=%s" % [
+		int(power_row["swings"]), float(power_row["hp0"]), float(power_row["hp1"]),
+		float(power_row["first_hp"]), float(power_row["dmg"]), float(power_row["cd"]),
+		"Y" if bool(power_row["dead"]) else "N"])
+	lines.append("kill burst=%s heal=%.1f hp=%.0f haste=%.1f punch=%s flash=%s spd=%.2f" % [
+		"Y" if burst_ok else "N", float(power_row["heal"]), float(power_row["hp"]),
+		float(power_row["haste"]), "Y" if punch_ok else "N", flash_s, float(power_row["spd"])])
+	print("POWER swings=", power_row["swings"], " dmg=", power_row["dmg"], " flash=", flash_s)
+
+	var life_row: Dictionary = await _power_count_swings("life")
+	lines.append("life  swings=%d hp %.0f->%.0f dmg=%.1f cd=%.2f dead=%s" % [
+		int(life_row["swings"]), float(life_row["hp0"]), float(life_row["hp1"]),
+		float(life_row["dmg"]), float(life_row["cd"]),
+		"Y" if bool(life_row["dead"]) else "N"])
+	print("POWER vs life swings=", power_row["swings"], "/", life_row["swings"])
+
+	var fewer: bool = int(power_row["swings"]) > 0 and int(power_row["swings"]) < int(life_row["swings"])
+	var gaps: Array = []
+	if not hud_ok:
+		gaps.append("hud")
+	if not hint_ok:
+		gaps.append("hint")
+	if not fewer:
+		gaps.append("fewer-hits")
+	if not bool(power_row["dead"]):
+		gaps.append("power-kill")
+	if not bool(life_row["dead"]):
+		gaps.append("life-kill")
+	if not burst_ok:
+		gaps.append("burst")
+	if not flash_ok:
+		gaps.append("flash")
+	if not punch_ok:
+		gaps.append("punch")
+	if not heal_ok:
+		gaps.append("lifesteal")
+	if not spd_ok:
+		gaps.append("night-speed")
+	if gaps.is_empty():
+		lines.append("DoD: 力量 kills a night skeleton in fewer hits, with 重击/掠杀 HUD, orange burst, camera punch.")
+	else:
+		var gap := ""
+		for i in gaps.size():
+			if i > 0:
+				gap += ", "
+			gap += str(gaps[i])
+		lines.append("DoD GAPS: " + gap)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/POWER_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/POWER_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("POWER_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:
