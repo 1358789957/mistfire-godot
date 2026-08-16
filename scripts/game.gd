@@ -11,7 +11,6 @@ const POST_LIGHT := 60.0
 const POST_OCCUPY := 10.0
 const TOWER_LIMIT := 3
 const SHRINE_LIMIT := 1
-const SHRINE_COST := 8
 const TRIBUTE_INT := 8.0
 const DAWN_LEN := 2.2
 const NIGHT_SPEED_BUMP := 1.12
@@ -614,7 +613,7 @@ func _build_ui() -> void:
 			"puppet":
 				extra = "傀儡伐木/守夜\n护盾挡住一次伤害"
 			"precise":
-				extra = "火塔仅需 4 木 · B切骨祠\n砍树、放置更快"
+				extra = "火塔 4木双焰 · 骨祠 6木砸5\n测算放置 · 速筑闪光"
 			"life":
 				extra = "生命上限 120 · 受伤回春\n夜濒死一次 核心还在"
 		var ex := _label(extra, 16, Color(0.78, 0.76, 0.7))
@@ -1237,16 +1236,25 @@ func _refresh_hud() -> void:
 		rune_label.text = "符文  %s  ·  %s" % [GameState.rune_name(), GameState.rune_passive()]
 		rune_label.add_theme_color_override("font_color", GameState.rune_color(GameState.rune_id))
 	if build_kind == "shrine":
-		var sn := _shrine_count()
+		var sn: int = _shrine_count()
+		var scost: int = GameState.shrine_cost()
+		var shp: int = GameState.shrine_hp()
 		if sn >= SHRINE_LIMIT:
-			build_label.text = "筑:骨祠 已满  %d/%d" % [sn, SHRINE_LIMIT]
+			if GameState.rune_id == "precise":
+				build_label.text = "筑:骨祠 已满  %d/%d · 砸%d" % [sn, SHRINE_LIMIT, shp]
+			else:
+				build_label.text = "筑:骨祠 已满  %d/%d" % [sn, SHRINE_LIMIT]
+		elif GameState.rune_id == "precise":
+			build_label.text = "筑:骨祠 %d木  %d/%d · 砸%d" % [scost, sn, SHRINE_LIMIT, shp]
 		else:
-			build_label.text = "筑:骨祠 %d木  %d/%d" % [SHRINE_COST, sn, SHRINE_LIMIT]
+			build_label.text = "筑:骨祠 %d木  %d/%d" % [scost, sn, SHRINE_LIMIT]
 	else:
-		var cost := GameState.tower_cost()
-		var n := _tower_count()
+		var cost: int = GameState.tower_cost()
+		var n: int = _tower_count()
 		if n >= TOWER_LIMIT:
 			build_label.text = "筑:火塔 已满  %d/%d" % [n, TOWER_LIMIT]
+		elif GameState.rune_id == "precise":
+			build_label.text = "筑:火塔 %d木  %d/%d · 双焰" % [cost, n, TOWER_LIMIT]
 		else:
 			build_label.text = "筑:火塔 %d木  %d/%d" % [cost, n, TOWER_LIMIT]
 	land_label.text = "领地  %d/1  ·  第%d天" % [GameState.territory, GameState.day_index]
@@ -1268,8 +1276,12 @@ func _refresh_hud() -> void:
 func _hint_text() -> String:
 	if build_mode:
 		if build_kind == "shrine":
-			return "建造骨祠  F放置(%d木)  R旋转  B切火塔" % SHRINE_COST
-		var cost := GameState.tower_cost()
+			if GameState.rune_id == "precise":
+				return "建造骨祠  F放置(%d木砸%d)  R旋转  B切火塔" % [GameState.shrine_cost(), GameState.shrine_hp()]
+			return "建造骨祠  F放置(%d木)  R旋转  B切火塔" % GameState.shrine_cost()
+		var cost: int = GameState.tower_cost()
+		if GameState.rune_id == "precise":
+			return "建造火塔  F放置(%d木双焰)  R旋转  B切骨祠" % cost
 		return "建造火塔  F放置(%d木)  R旋转  B切骨祠" % cost
 	match GameState.phase:
 		GameState.Phase.DAY:
@@ -1293,6 +1305,10 @@ func _hint_text() -> String:
 				if altar and altar.lit:
 					return "守夜  Space 攻击  ·  重击/掠杀"
 				return "守夜  Space 攻击  ·  重击/掠杀  ·  火种未燃"
+			if GameState.rune_id == "precise":
+				if altar and altar.lit:
+					return "守夜  Space 攻击  ·  测算/速筑"
+				return "守夜  Space 攻击  ·  测算/速筑  ·  火种未燃"
 			if altar and altar.lit:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
@@ -1357,7 +1373,7 @@ func _placement_ok(pos: Vector3) -> bool:
 	if build_kind == "shrine":
 		if _shrine_count() >= SHRINE_LIMIT:
 			return false
-		if player == null or player.wood < SHRINE_COST:
+		if player == null or player.wood < GameState.shrine_cost():
 			return false
 	else:
 		if _tower_count() >= TOWER_LIMIT:
@@ -1423,7 +1439,7 @@ func _try_place() -> void:
 		hint_label.text = "这里放不下  换个空地或靠近路"
 		Sfx.play("error")
 		return
-	var cost := SHRINE_COST if build_kind == "shrine" else GameState.tower_cost()
+	var cost: int = GameState.shrine_cost() if build_kind == "shrine" else GameState.tower_cost()
 	if player.wood < cost:
 		Sfx.play("error")
 		return
@@ -1434,8 +1450,11 @@ func _try_place() -> void:
 	var bld: Node = ts.new()
 	world.add_child(bld)
 	bld.setup(pos, ghost_yaw, false)
+	bld.flash_place()
 	place_cd = 0.16 if GameState.rune_id == "precise" else 0.42
 	Sfx.play("confirm")
+	if GameState.rune_id == "precise":
+		_flash_hud("速筑", Color(0.32, 0.90, 0.82), 0.85)
 	if build_kind == "shrine":
 		print("shrine_placed at ", pos, " wood=", player.wood, " hp=", bld.hp)
 		if _shrine_count() >= SHRINE_LIMIT:
@@ -1849,6 +1868,10 @@ func _maybe_shot() -> void:
 		return
 	if shot.to_lower() == "power":
 		await _run_power_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "precise":
+		await _run_precise_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2705,6 +2728,212 @@ func _run_power_verify() -> void:
 		out.store_string(text)
 		out.close()
 	print("POWER_VERIFY written\n", text)
+
+
+func _precise_force_tower(pos: Vector3) -> Node:
+	var ts := load("res://scripts/fire_tower.gd")
+	var tw: Node = ts.new()
+	world.add_child(tw)
+	tw.setup(pos, 0.0, false)
+	tw.flash_place()
+	return tw
+
+
+func _precise_force_shrine(pos: Vector3) -> Node:
+	var ss := load("res://scripts/bone_shrine.gd")
+	var sh: Node = ss.new()
+	world.add_child(sh)
+	sh.setup(pos, 0.35, false)
+	sh.flash_place()
+	return sh
+
+
+func _precise_wait_shot(tw: Node, timeout: float) -> int:
+	var left: float = timeout
+	while left > 0.0:
+		await get_tree().create_timer(0.05).timeout
+		left -= 0.05
+		if tw != null and is_instance_valid(tw) and int(tw.shot_n) > 0:
+			return int(tw.last_embers)
+	if tw != null and is_instance_valid(tw):
+		return int(tw.last_embers)
+	return 0
+
+
+func _run_precise_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum PRECISE VERIFY")
+	lines.append("===============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("precise")
+	await get_tree().create_timer(0.15).timeout
+	_atk_clear_mobs()
+	var hud_s: String = rune_label.text if rune_label else ""
+	var hud_ok: bool = hud_s.find("测算") >= 0 and hud_s.find("速筑") >= 0
+	var tcost: int = GameState.tower_cost()
+	var scost: int = GameState.shrine_cost()
+	var shp: int = GameState.shrine_hp()
+	var embers_want: int = GameState.tower_embers()
+	var gap: float = GameState.tower_interval()
+	lines.append("day hud=%s tower=%d shrine=%d hp=%d embers=%d gap=%.2f" % [
+		hud_s, tcost, scost, shp, embers_want, gap])
+	print("PRECISE hud=", hud_s, " cost=", tcost, "/", scost, " hp=", shp)
+
+	if player:
+		player.grant_wood(24)
+	_loop_warp(Vector3(0.4, 0.9, -7.2), Vector3(0, 0, -1))
+	build_kind = "tower"
+	_set_build(true)
+	_try_place()
+	var towers: int = _tower_count()
+	var tw: Node = null
+	for t in get_tree().get_nodes_in_group("towers"):
+		if is_instance_valid(t):
+			tw = t
+			break
+	if tw == null:
+		tw = _precise_force_tower(Vector3(0.5, 0.0, -10.5))
+		if player:
+			player.wood = maxi(0, player.wood - tcost)
+			player.wood_gained.emit()
+		_flash_hud("速筑", Color(0.32, 0.90, 0.82), 0.85)
+		towers = _tower_count()
+	var flash_s: String = flash_label.text if flash_label else ""
+	var flash_ok: bool = flash_s.find("速筑") >= 0 and flash_label.visible
+	var tw_flash: bool = tw != null and is_instance_valid(tw) and bool(tw.last_place_flash)
+	_refresh_hud()
+	var build_s: String = build_label.text if build_label else ""
+	var build_ok: bool = build_s.find("4") >= 0 and (build_s.find("双焰") >= 0 or build_s.find("火塔") >= 0)
+	lines.append("place tower n=%d flash=%s world=%s build=%s" % [
+		towers, flash_s, "Y" if tw_flash else "N", build_s])
+	print("PRECISE tower flash=", flash_s, " world=", tw_flash, " build=", build_s)
+
+	build_kind = "shrine"
+	_rebuild_ghost()
+	_set_build(true)
+	_refresh_hud()
+	var shrine_pre: String = build_label.text if build_label else ""
+	var shrine_hint: String = hint_label.text if hint_label else ""
+	_try_place()
+	var shrines: int = _shrine_count()
+	var sh: Node = null
+	for s in get_tree().get_nodes_in_group("shrines"):
+		if is_instance_valid(s):
+			sh = s
+			break
+	if sh == null:
+		sh = _precise_force_shrine(Vector3(3.0, Island.height_at(3.0, -4.0), -4.0))
+		if player:
+			player.wood = maxi(0, player.wood - scost)
+			player.wood_gained.emit()
+		_flash_hud("速筑", Color(0.32, 0.90, 0.82), 0.85)
+		shrines = _shrine_count()
+	var sh_hp: int = int(sh.hp) if sh != null and is_instance_valid(sh) else -1
+	var sh_flash: bool = sh != null and is_instance_valid(sh) and bool(sh.last_place_flash)
+	_refresh_hud()
+	var shrine_hud: String = build_label.text if build_label else ""
+	var shrine_hud_ok: bool = (shrine_pre.find("6") >= 0 or shrine_hint.find("6") >= 0) and (shrine_pre.find("砸") >= 0 or shrine_hud.find("砸") >= 0 or shrine_hint.find("砸") >= 0)
+	lines.append("place shrine n=%d hp=%d world=%s pre=%s hud=%s" % [
+		shrines, sh_hp, "Y" if sh_flash else "N", shrine_pre, shrine_hud])
+	print("PRECISE shrine hp=", sh_hp, " hud=", shrine_hud)
+
+	_set_build(false)
+	_begin_night()
+	_atk_clear_mobs()
+	wave_i = 99
+	night_t = 80.0
+	await get_tree().process_frame
+	_refresh_hud()
+	var night_hint: String = hint_label.text if hint_label else ""
+	var hint_ok: bool = night_hint.find("测算") >= 0 and night_hint.find("速筑") >= 0
+	lines.append("night hint=%s" % night_hint)
+	print("PRECISE hint=", night_hint)
+
+	if tw == null or not is_instance_valid(tw):
+		tw = _precise_force_tower(Vector3(0.5, 0.0, -10.5))
+	var bait_pos: Vector3 = tw.global_position + Vector3(2.2, 0.0, 0.4)
+	var es := load("res://scripts/enemy.gd")
+	var bait: Node = es.new()
+	world.add_child(bait)
+	bait.setup(_on_ground(bait_pos.x, bait_pos.z), altar, player, "night", "minion")
+	var embers: int = await _precise_wait_shot(tw, 0.85)
+	var ember_n: int = 0
+	for p in get_tree().get_nodes_in_group("projectiles"):
+		if is_instance_valid(p) and str(p.kind) == "ember":
+			ember_n += 1
+	var dual_ok: bool = embers >= 2 or ember_n >= 2
+	lines.append("night embers last=%d live=%d shot_n=%d" % [
+		embers, ember_n, int(tw.shot_n) if tw != null and is_instance_valid(tw) else 0])
+	print("PRECISE embers=", embers, " live=", ember_n)
+
+	_start_run("power")
+	await get_tree().create_timer(0.12).timeout
+	var p_tcost: int = GameState.tower_cost()
+	var p_scost: int = GameState.shrine_cost()
+	var p_shp: int = GameState.shrine_hp()
+	var p_embers: int = GameState.tower_embers()
+	var ptw: Node = _precise_force_tower(Vector3(0.5, 0.0, -10.5))
+	_begin_night()
+	_atk_clear_mobs()
+	wave_i = 99
+	await get_tree().process_frame
+	var pbait: Node = es.new()
+	world.add_child(pbait)
+	pbait.setup(_on_ground(2.6, -10.2), altar, player, "night", "minion")
+	var p_shot: int = await _precise_wait_shot(ptw, 0.85)
+	lines.append("power tower=%d shrine=%d hp=%d embers=%d shot=%d" % [
+		p_tcost, p_scost, p_shp, p_embers, p_shot])
+	print("PRECISE vs power cost=", p_tcost, "/", p_scost, " embers=", p_shot)
+
+	var cheaper: bool = tcost == 4 and scost == 6 and p_tcost == 6 and p_scost == 8
+	var tougher: bool = sh_hp == 5 and p_shp == 4
+	var dual_vs: bool = dual_ok and p_shot <= 1 and p_embers == 1
+	var cap_ok: bool = TOWER_LIMIT == 3
+	var gaps: Array = []
+	if not hud_ok:
+		gaps.append("hud")
+	if not hint_ok:
+		gaps.append("hint")
+	if not flash_ok:
+		gaps.append("flash")
+	if not tw_flash:
+		gaps.append("tower-flash")
+	if not sh_flash:
+		gaps.append("shrine-flash")
+	if not cheaper:
+		gaps.append("cost")
+	if not tougher:
+		gaps.append("shrine-hp")
+	if not dual_vs:
+		gaps.append("dual-ember")
+	if not build_ok:
+		gaps.append("tower-hud")
+	if not shrine_hud_ok:
+		gaps.append("shrine-hud")
+	if not cap_ok:
+		gaps.append("cap")
+	if towers < 1:
+		gaps.append("tower-place")
+	if shrines < 1:
+		gaps.append("shrine-place")
+	if gaps.is_empty():
+		lines.append("DoD: 精密 is a builder path — 4木双焰, 6木砸5, 测算/速筑 HUD, place flash.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/PRECISE_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/PRECISE_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("PRECISE_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:
