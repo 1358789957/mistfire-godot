@@ -1734,7 +1734,7 @@ func _process(delta: float) -> void:
 		camera.look_at(player.global_position + Vector3(0.0, 1.15, 0.0))
 		return
 
-	if player and is_instance_valid(player) and OS.get_environment("MISTFIRE_SHOT") != "atk":
+	if player and is_instance_valid(player) and OS.get_environment("MISTFIRE_SHOT") != "atk" and _shot_focus != "loot":
 		player.cam_yaw = cam_yaw
 		cam_pivot.global_position = player.global_position
 		cam_pivot.rotation.y = cam_yaw
@@ -2353,8 +2353,18 @@ func _run_shore_verify() -> void:
 
 func _save_shot(path: String) -> void:
 	await get_tree().process_frame
+	if DisplayServer.get_name() == "headless":
+		print("saved shot skipped (headless) ", path)
+		return
 	await RenderingServer.frame_post_draw
-	var img := get_viewport().get_texture().get_image()
+	var tex := get_viewport().get_texture()
+	if tex == null:
+		print("saved shot skip null tex ", path)
+		return
+	var img := tex.get_image()
+	if img == null:
+		print("saved shot skip null img ", path)
+		return
 	var err := img.save_png(path)
 	print("saved shot ", path, " err=", err)
 
@@ -3019,6 +3029,12 @@ func _run_wilds_verify() -> void:
 	lines.append("wilds warrior=%s mage=%s rogue=%s" % [
 		"Y" if warrior else "N", "Y" if mage else "N", "Y" if rogue else "N"])
 	print("WILDS kinds warrior=", warrior != null, " mage=", mage != null, " rogue=", rogue != null)
+	if player:
+		player.invuln = 40.0
+	for e in get_tree().get_nodes_in_group("wilds"):
+		if is_instance_valid(e) and e != warrior and e != mage:
+			e.speed = 0.0
+			e.leash = 0.2
 
 	var wood0: int = player.wood if player else -1
 	if warrior and is_instance_valid(warrior):
@@ -3051,17 +3067,20 @@ func _run_wilds_verify() -> void:
 	lines.append("mage bone drop=%s wood %d->%d" % ["Y" if mage_drop else "N", wood2, wood3])
 	print("WILDS mage drop=", mage_drop, " wood=", wood2, "->", wood3)
 
+	if flash_label:
+		flash_label.visible = false
+		flash_t = 0.0
 	if chest and is_instance_valid(chest) and player:
 		_loop_warp(chest.global_position + Vector3(-1.55, 0.0, 1.35), Vector3(0.72, 0.0, -0.48))
 	await get_tree().create_timer(0.16).timeout
 	_refresh_hud()
 	var hint_s: String = hint_label.text if hint_label else ""
 	var hint_ok: bool = hint_s.find("开箱") >= 0
-	_try_chest()
-	var opened: bool = chest != null and is_instance_valid(chest) and chest.opened
 	_frame_chest_cam()
 	await get_tree().create_timer(0.22).timeout
 	await _save_shot("/workspace/shot-chest-hint.png")
+	_try_chest()
+	var opened: bool = chest != null and is_instance_valid(chest) and chest.opened
 	lines.append("chest kaykit hint=%s opened=%s" % [hint_s, "Y" if opened else "N"])
 	print("WILDS chest hint=", hint_s, " opened=", opened)
 
