@@ -607,7 +607,7 @@ func _build_ui() -> void:
 			"power":
 				extra = "近战可按住连砍\n伤害提高，首杀加速"
 			"puppet":
-				extra = "傀儡自动伐木\n护盾挡住一次伤害"
+				extra = "傀儡伐木/守夜\n护盾挡住一次伤害"
 			"precise":
 				extra = "火塔仅需 4 木 · B切骨祠\n砍树、放置更快"
 			"life":
@@ -828,11 +828,7 @@ func _spawn_player() -> void:
 	player.cam_yaw = cam_yaw
 	player.died.connect(_on_player_died)
 	player.wood_gained.connect(_on_wood)
-	if GameState.rune_id == "puppet":
-		var gs := load("res://scripts/golem.gd")
-		golem = gs.new()
-		world.add_child(golem)
-		golem.setup(player)
+	_ensure_puppet_golem()
 
 
 func _spawn_chest() -> void:
@@ -956,6 +952,23 @@ func _wave_counts() -> Array:
 	return out
 
 
+func _ensure_puppet_golem() -> void:
+	# Live puppet run: keep the same golem through night / dawn / day 2.
+	# Only a new run (_spawn_player / _clear_run) may free it.
+	if GameState.rune_id != "puppet":
+		return
+	if golem and is_instance_valid(golem):
+		if golem.master != player and player and is_instance_valid(player):
+			golem.master = player
+		return
+	if player == null or not is_instance_valid(player) or world == null:
+		return
+	var gs := load("res://scripts/golem.gd")
+	golem = gs.new()
+	world.add_child(golem)
+	golem.setup(player)
+
+
 func _begin_night() -> void:
 	if GameState.phase == GameState.Phase.NIGHT or GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
@@ -967,6 +980,7 @@ func _begin_night() -> void:
 	_night_lit = altar != null and altar.lit
 	_set_night_look()
 	_spawn_wave(0)
+	_ensure_puppet_golem()
 	Sfx.play("night")
 	_refresh_hud()
 
@@ -1020,6 +1034,7 @@ func _show_result(win: bool) -> void:
 	if GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
 	# Night 1 win is not a dead-end: dawn, then Day 2 on the same island.
+	# Puppet golem is not freed here — it rides dawn into day 2.
 	# VERIFY: _show_result(true) -> _begin_dawn (day_index += 1) -> DAY.
 	# Wood / towers / shrine / keep / trees / chest / rune persist. Night 2 is [4,5,6] + 12% speed.
 	# Night 2 win (day_index >= MAX_DAYS) is the terminal 守住了.
@@ -1090,6 +1105,7 @@ func _begin_dawn() -> void:
 	if player and is_instance_valid(player):
 		player.hp = player.max_hp
 		player.invuln = 1.2
+	_ensure_puppet_golem()
 	play_hud.visible = true
 	result_root.visible = true
 	if result_again:
@@ -1108,6 +1124,7 @@ func _finish_dawn() -> void:
 	if result_again:
 		result_again.visible = true
 	GameState.phase = GameState.Phase.DAY
+	_ensure_puppet_golem()
 	_refresh_hud()
 
 
@@ -1179,6 +1196,10 @@ func _hint_text() -> String:
 				return "占城寨  清卫兵后到旗帜按 E  ·  B 建塔/祠"
 			return "入夜  按 N 或等待  ·  B 建塔/祠守夜"
 		GameState.Phase.NIGHT:
+			if GameState.rune_id == "puppet":
+				if altar and altar.lit:
+					return "守夜  Space 攻击  ·  傀儡守夜"
+				return "守夜  Space 攻击  ·  傀儡守夜  ·  火种未燃"
 			if altar and altar.lit:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
@@ -1723,6 +1744,10 @@ func _maybe_shot() -> void:
 		await _run_shrine_verify()
 		get_tree().quit()
 		return
+	if shot == "golem":
+		await _run_golem_verify()
+		get_tree().quit()
+		return
 	if shot == "charsel":
 		await get_tree().process_frame
 		_show_charsel()
@@ -2231,6 +2256,87 @@ func _run_shrine_verify() -> void:
 	print("shrine_hp ", shp, " night living=", _night_living())
 	await _save_shot("/workspace/mistfire-godot/shot-shrine-night.png")
 	print("SHRINE_VERIFY wood=", player.wood if player else -1, " shrine_hp=", shp, " living=", _night_living())
+
+
+func _run_golem_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum GOLEM VERIFY")
+	lines.append("============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("puppet")
+	await get_tree().create_timer(0.15).timeout
+	var spawn_ok: bool = golem != null and is_instance_valid(golem)
+	var hud_s: String = rune_label.text if rune_label else ""
+	lines.append("day spawn=%s hud=%s" % ["Y" if spawn_ok else "N", hud_s])
+	print("GOLEM spawn=", spawn_ok, " hud=", hud_s)
+
+	_begin_night()
+	await get_tree().process_frame
+	var night_hint: String = hint_label.text if hint_label else ""
+	var g_night: bool = golem != null and is_instance_valid(golem)
+	var bait_hp0 := 55.0
+	var bait_hp1 := 55.0
+	var swung := false
+	if player and is_instance_valid(player) and golem and is_instance_valid(golem):
+		_loop_warp(Vector3(6.4, 0.9, 6.8), Vector3(1, 0, 0))
+		golem.global_position = player.global_position + Vector3(-1.1, 0, 0.6)
+		golem.global_position.y = 0.7
+		var es := load("res://scripts/enemy.gd")
+		var bait: Node = es.new()
+		world.add_child(bait)
+		bait.setup(_on_ground(7.6, 6.9), altar, player, "night", "minion")
+		bait_hp0 = float(bait.hp)
+		await get_tree().create_timer(1.15).timeout
+		bait_hp1 = float(bait.hp) if is_instance_valid(bait) else 0.0
+		swung = golem.last_hit_at > 0.0 or bait_hp1 < bait_hp0
+	var night_ok: bool = g_night and swung and bait_hp1 < bait_hp0
+	lines.append("night persist=%s hint=%s hit=%s hp %.0f->%.0f" % [
+		"Y" if g_night else "N", night_hint, "Y" if swung else "N", bait_hp0, bait_hp1])
+	print("GOLEM night persist=", g_night, " hit=", swung, " hp=", bait_hp0, "->", bait_hp1)
+
+	_show_result(true)
+	var g_dawn: bool = golem != null and is_instance_valid(golem)
+	if GameState.phase == GameState.Phase.DAWN:
+		await get_tree().create_timer(DAWN_LEN + 0.35).timeout
+	var g_day2: bool = golem != null and is_instance_valid(golem)
+	var day2_ok: bool = GameState.phase == GameState.Phase.DAY and GameState.day_index == 2 and g_day2
+	lines.append("dawn persist=%s day2 persist=%s phase=%s day=%d" % [
+		"Y" if g_dawn else "N", "Y" if g_day2 else "N", str(GameState.phase), GameState.day_index])
+	print("GOLEM dawn=", g_dawn, " day2=", g_day2, " phase=", GameState.phase)
+
+	var hud_ok: bool = hud_s.find("伐木") >= 0 and hud_s.find("守夜") >= 0
+	var hint_ok: bool = night_hint.find("傀儡") >= 0
+	var gaps: Array = []
+	if not spawn_ok:
+		gaps.append("spawn")
+	if not night_ok:
+		gaps.append("night-hit")
+	if not g_dawn:
+		gaps.append("dawn")
+	if not day2_ok:
+		gaps.append("day2")
+	if not hud_ok:
+		gaps.append("hud")
+	if not hint_ok:
+		gaps.append("hint")
+	if gaps.is_empty():
+		lines.append("DoD: puppet golem chops by day, melee at night, persists through dawn into day 2.")
+	else:
+		var gap := ""
+		for i in gaps.size():
+			if i > 0:
+				gap += ", "
+			gap += str(gaps[i])
+		lines.append("DoD GAPS: " + gap)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/GOLEM_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/GOLEM_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("GOLEM_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:
