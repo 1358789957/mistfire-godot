@@ -1,0 +1,8 @@
+Mistfire Sanctum POWER VERIFY
+=============================
+day hud=符文  力量  ·  重击/掠杀
+night hint=守夜  Space 攻击  ·  重击/掠杀  ·  火种未燃
+power swings=2 hp 55->-36 (first 9) dmg=45.6 cd=0.36 dead=Y
+kill burst=Y heal=8.0 hp=68 haste=2.6 punch=Y flash=掠杀 spd=9.19
+life  swings=3 hp 55->-17 dmg=24.0 cd=0.48 dead=Y
+DoD: 力量 kills a night skeleton in fewer hits, with 重击/掠杀 HUD, orange burst, camera punch.

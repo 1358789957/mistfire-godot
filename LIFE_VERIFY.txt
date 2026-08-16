@@ -1,0 +1,9 @@
+Mistfire Sanctum LIFE VERIFY
+============================
+day max_hp=120 hud=符文  生命  ·  厚血/核心还在
+hurt pulse=Y hp 120->103 absorbed=17.0 (want <20)
+altar net=Y hp 71.8 (from 70, combat_t=1.2)
+day lethal die=Y save=N flash=
+night save=Y hp=12 hint=守夜  Space 攻击  ·  核心还在  ·  火种未燃 flash=核心还在
+second lethal die=Y hp=0 phase=6
+DoD: 生命 has 120 hp, visible hurt pulse, altar-net tick, night 核心还在 once, then death.

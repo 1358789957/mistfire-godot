@@ -1,4 +1,5 @@
 .godot/
+godot/
 *.translation
 run.log
 shot-*.png

@@ -7,8 +7,24 @@ signal died
 signal wood_gained
 signal chopped_tree
 signal attacked
+signal core_saved
+signal power_struck(killed: bool)
 
 const SPEED := 7.2
+const LIFE_MAX_HP := 120.0
+const LIFE_INCOMING := 0.85
+const LIFE_SLIVER := 12.0
+const LIFE_OOC_REGEN := 3.6
+const LIFE_NET_REGEN := 1.6
+const LIFE_NET_R := 5.2
+const POWER_DMG := 1.90
+const POWER_CD := 0.76
+const POWER_KNOCK := 1.35
+const POWER_RANGE := 1.12
+const POWER_NIGHT_SPD := 1.10
+const POWER_HASTE_SPD := 1.16
+const POWER_HASTE_T := 2.6
+const POWER_KILL_HEAL := 8.0
 
 var rune_id := "power"
 var character_id := "knight"
@@ -26,7 +42,23 @@ var _slash: MeshInstance3D
 var _slash_t := 0.0
 var cam_yaw := 0.35
 var kill_haste := false
+var kill_haste_t := 0.0
 var combat_t := 8.0
+var core_save_ready := true
+var last_core_save := false
+var last_hurt_pulse := false
+var last_kill_burst := false
+var last_heavy := false
+var last_kill_heal := 0.0
+var heal_pulse_t := 0.0
+var near_life_net := false
+var _heal_ring: MeshInstance3D
+var _heal_ring_mat: StandardMaterial3D
+var _life_net_light: OmniLight3D
+var _burst_t := 0.0
+var _burst_ring: MeshInstance3D
+var _burst_mat: StandardMaterial3D
+var _burst_light: OmniLight3D
 
 var _model: Node3D
 var _ap: AnimationPlayer
@@ -66,11 +98,21 @@ func setup(id: String) -> void:
 	floor_max_angle = deg_to_rad(52.0)
 	safe_margin = 0.08
 	kill_haste = false
+	kill_haste_t = 0.0
 	combat_t = 8.0
+	core_save_ready = true
+	last_core_save = false
+	last_hurt_pulse = false
+	last_kill_burst = false
+	last_heavy = false
+	last_kill_heal = 0.0
+	heal_pulse_t = 0.0
+	near_life_net = false
+	_burst_t = 0.0
 
 	match rune_id:
 		"life":
-			max_hp = 120.0
+			max_hp = LIFE_MAX_HP
 		"puppet":
 			max_hp = 80.0
 			shield_charges = 1
@@ -100,6 +142,10 @@ func setup(id: String) -> void:
 	gem.height = 0.14
 	var gc: Color = GameState.rune_color(rune_id)
 	Mats.mesh(self, gem, Mats.solid(gc, true, gc, 1.1), Vector3(0.22, 1.28, 0.06))
+	if rune_id == "life":
+		_make_life_fx()
+	if rune_id == "power":
+		_make_power_fx()
 
 	var slash_mesh := CylinderMesh.new()
 	slash_mesh.top_radius = 1.0
@@ -198,10 +244,11 @@ func kit() -> Dictionary:
 		_:
 			pass
 	if rune_id == "power":
-		k["dmg"] = float(k["dmg"]) * 1.45
-		k["knock"] = float(k["knock"]) * 1.28
+		k["dmg"] = float(k["dmg"]) * POWER_DMG
+		k["knock"] = float(k["knock"]) * POWER_KNOCK
+		k["cd"] = float(k["cd"]) * POWER_CD
 		if str(k["kind"]) == "melee":
-			k["range"] = float(k["range"]) * 1.10
+			k["range"] = float(k["range"]) * POWER_RANGE
 	if rune_id == "precise":
 		k["cd"] = float(k["cd"]) * 0.70
 	return k
@@ -212,9 +259,13 @@ func is_melee() -> bool:
 
 
 func move_speed() -> float:
-	if rune_id == "power" and kill_haste:
-		return SPEED * 1.16
-	return SPEED
+	var spd := SPEED
+	if rune_id == "power":
+		if GameState.phase == GameState.Phase.NIGHT:
+			spd *= POWER_NIGHT_SPD
+		if kill_haste_t > 0.0:
+			spd *= POWER_HASTE_SPD
+	return spd
 
 
 func grant_wood(n: int = 1) -> void:
@@ -233,8 +284,10 @@ func _physics_process(delta: float) -> void:
 	invuln = maxf(0.0, invuln - delta)
 	_attack_t = maxf(0.0, _attack_t - delta)
 	combat_t += delta
-	if rune_id == "life" and combat_t >= 3.4 and hp > 0.0 and hp < max_hp:
-		hp = minf(max_hp, hp + 3.6 * delta)
+	if rune_id == "power":
+		_tick_power(delta)
+	if rune_id == "life":
+		_tick_life(delta)
 	if rune_id == "puppet":
 		shield_cd = maxf(0.0, shield_cd - delta)
 		if shield_charges <= 0 and shield_cd <= 0.0:
@@ -393,6 +446,10 @@ func do_attack() -> void:
 		return
 
 	_flash_slash(float(k["range"]), _slash_color())
+	if rune_id == "power":
+		_slash_t = 0.32
+		if _slash:
+			_slash.scale *= 1.18
 	_melee_pulse(float(k["dmg"]), float(k["knock"]), float(k["range"]), float(k["angle"]))
 	if int(k["ticks"]) >= 2:
 		_stab2_t = float(k["tick_gap"])
@@ -403,6 +460,8 @@ func do_attack() -> void:
 
 
 func _slash_color() -> Color:
+	if rune_id == "power":
+		return Color(1.0, 0.36, 0.10)
 	match character_id:
 		"barbarian":
 			return Color(1.0, 0.42, 0.18)
@@ -445,8 +504,8 @@ func _melee_pulse(dmg: float, knock: float, radius: float, angle_deg: float) -> 
 		var killed: bool = e.take_hit(dmg, dir * knock)
 		hit_any = true
 		atk_hits += 1
-		if killed and rune_id == "power":
-			kill_haste = true
+		if rune_id == "power":
+			_on_power_connect(killed)
 	if hit_any:
 		Sfx.play("hit")
 		attacked.emit()
@@ -470,8 +529,8 @@ func _spawn_projectile(kind: String, dmg: float, knock: float) -> void:
 func notify_proj_hit(killed: bool) -> void:
 	atk_hits += 1
 	attacked.emit()
-	if killed and rune_id == "power":
-		kill_haste = true
+	if rune_id == "power":
+		_on_power_connect(killed)
 
 
 func take_hit(amount: float) -> void:
@@ -495,10 +554,195 @@ func take_hit(amount: float) -> void:
 				break
 		if blocked:
 			amount *= 0.72
+	if rune_id == "life":
+		amount *= LIFE_INCOMING
+	if hp - amount <= 0.0 and _try_core_save():
+		return
 	hp = maxf(0.0, hp - amount)
 	invuln = 0.55
+	if rune_id == "life":
+		_start_heal_pulse()
 	if hp <= 0.0:
 		died.emit()
+
+
+func arm_core_save() -> void:
+	if rune_id != "life":
+		return
+	core_save_ready = true
+	last_core_save = false
+
+
+func _try_core_save() -> bool:
+	if rune_id != "life" or not core_save_ready:
+		return false
+	if GameState.phase != GameState.Phase.NIGHT:
+		return false
+	core_save_ready = false
+	last_core_save = true
+	hp = LIFE_SLIVER
+	invuln = 1.15
+	combat_t = 0.0
+	_start_heal_pulse()
+	core_saved.emit()
+	print("life_core_save hp=", snappedf(hp, 0.1))
+	return true
+
+
+func _on_power_connect(killed: bool) -> void:
+	last_heavy = true
+	_start_power_burst(killed)
+	if killed:
+		last_kill_burst = true
+		kill_haste = true
+		kill_haste_t = POWER_HASTE_T
+		var before := hp
+		hp = minf(max_hp, hp + POWER_KILL_HEAL)
+		last_kill_heal = hp - before
+		print("power_kill dmg_mult=", POWER_DMG, " heal=", snappedf(last_kill_heal, 0.1), " hp=", snappedf(hp, 0.1))
+	else:
+		print("power_heavy dmg=", snappedf(float(kit()["dmg"]), 0.1))
+	power_struck.emit(killed)
+
+
+func _make_power_fx() -> void:
+	var ring := CylinderMesh.new()
+	ring.top_radius = 1.28
+	ring.bottom_radius = 1.28
+	ring.height = 0.10
+	ring.radial_segments = 18
+	_burst_mat = Mats.solid(Color(1.0, 0.42, 0.12, 0.0), true, Color(1.0, 0.38, 0.08), 2.2)
+	_burst_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_burst_ring = Mats.mesh(self, ring, _burst_mat, Vector3(0.0, 0.18, 0.0))
+	_burst_ring.visible = false
+	_burst_light = OmniLight3D.new()
+	_burst_light.light_color = Color(1.0, 0.40, 0.12)
+	_burst_light.light_energy = 0.0
+	_burst_light.omni_range = 4.2
+	_burst_light.position = Vector3(0.0, 1.15, 0.0)
+	_burst_light.shadow_enabled = false
+	add_child(_burst_light)
+
+
+func _start_power_burst(killed: bool) -> void:
+	_burst_t = 0.38 if killed else 0.20
+	if _burst_ring:
+		_burst_ring.visible = true
+	_paint_power_burst(1.0, killed)
+
+
+func _paint_power_burst(strength: float, killed: bool) -> void:
+	if _burst_mat == null:
+		return
+	var a := clampf(strength, 0.0, 1.0) * (0.88 if killed else 0.55)
+	_burst_mat.albedo_color = Color(1.0, 0.40, 0.10, a)
+	_burst_mat.emission_energy_multiplier = 1.1 + a * 2.4
+	if _burst_ring:
+		var s := 0.70 + (1.0 - clampf(strength, 0.0, 1.0)) * (1.15 if killed else 0.55)
+		_burst_ring.scale = Vector3(s, 1.0, s)
+		_burst_ring.visible = a > 0.02
+	if _burst_light:
+		_burst_light.light_energy = (2.4 if killed else 1.1) * a
+
+
+func _tick_power(delta: float) -> void:
+	if kill_haste_t > 0.0:
+		kill_haste_t = maxf(0.0, kill_haste_t - delta)
+		if kill_haste_t <= 0.0:
+			kill_haste = false
+	if _burst_t > 0.0:
+		_burst_t = maxf(0.0, _burst_t - delta)
+		var span := 0.38 if last_kill_burst and _burst_t > 0.12 else 0.20
+		_paint_power_burst(_burst_t / maxf(0.08, span), last_kill_burst and _burst_t > 0.08)
+		if _burst_t <= 0.0:
+			_paint_power_burst(0.0, false)
+			if _burst_ring:
+				_burst_ring.visible = false
+			if _burst_light:
+				_burst_light.light_energy = 0.0
+
+
+func _make_life_fx() -> void:
+	var ring := CylinderMesh.new()
+	ring.top_radius = 1.05
+	ring.bottom_radius = 1.05
+	ring.height = 0.07
+	ring.radial_segments = 18
+	_heal_ring_mat = Mats.solid(Color(0.38, 0.92, 0.48, 0.0), true, Color(0.32, 0.88, 0.40), 1.5)
+	_heal_ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_heal_ring = Mats.mesh(self, ring, _heal_ring_mat, Vector3(0.0, 0.10, 0.0))
+	_heal_ring.visible = false
+	_life_net_light = OmniLight3D.new()
+	_life_net_light.light_color = Color(0.42, 0.92, 0.48)
+	_life_net_light.light_energy = 0.0
+	_life_net_light.omni_range = 3.2
+	_life_net_light.position = Vector3(0.0, 1.15, 0.0)
+	_life_net_light.shadow_enabled = false
+	add_child(_life_net_light)
+
+
+func _start_heal_pulse() -> void:
+	last_hurt_pulse = true
+	heal_pulse_t = 0.42
+	if _heal_ring:
+		_heal_ring.visible = true
+	_paint_heal_pulse(1.0)
+	print("life_hurt_pulse hp=", snappedf(hp, 0.1))
+
+
+func _paint_heal_pulse(strength: float) -> void:
+	if _heal_ring_mat == null:
+		return
+	var a := clampf(strength, 0.0, 1.0) * 0.72
+	_heal_ring_mat.albedo_color = Color(0.38, 0.92, 0.48, a)
+	_heal_ring_mat.emission_energy_multiplier = 0.6 + a * 1.4
+	if _heal_ring:
+		var s := 0.85 + (1.0 - clampf(strength, 0.0, 1.0)) * 0.55
+		_heal_ring.scale = Vector3(s, 1.0, s)
+		_heal_ring.visible = a > 0.02
+
+
+func _tick_life(delta: float) -> void:
+	if hp <= 0.0:
+		return
+	near_life_net = _life_network_near()
+	if hp < max_hp:
+		if combat_t >= 3.4:
+			hp = minf(max_hp, hp + LIFE_OOC_REGEN * delta)
+		if near_life_net:
+			hp = minf(max_hp, hp + LIFE_NET_REGEN * delta)
+	if heal_pulse_t > 0.0:
+		heal_pulse_t = maxf(0.0, heal_pulse_t - delta)
+		_paint_heal_pulse(heal_pulse_t / 0.42)
+		if heal_pulse_t <= 0.0 and near_life_net:
+			_paint_heal_pulse(0.22)
+	elif near_life_net:
+		var wobble := 0.16 + 0.06 * sin(Time.get_ticks_msec() * 0.006)
+		_paint_heal_pulse(wobble)
+	elif _heal_ring:
+		_heal_ring.visible = false
+	if _life_net_light:
+		_life_net_light.light_energy = 0.42 if near_life_net else 0.0
+
+
+func _life_network_near() -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	for a in tree.get_nodes_in_group("altar"):
+		if a == null or not is_instance_valid(a):
+			continue
+		if bool(a.get("lit")) and near_altar(a, LIFE_NET_R):
+			return true
+	for s in tree.get_nodes_in_group("shrines"):
+		if s == null or not is_instance_valid(s):
+			continue
+		if bool(s.get("broken")):
+			continue
+		var d := Vector3(s.global_position.x - global_position.x, 0, s.global_position.z - global_position.z).length()
+		if d <= LIFE_NET_R:
+			return true
+	return false
 
 
 func near_altar(altar: Node3D, dist: float = 4.8) -> bool:
