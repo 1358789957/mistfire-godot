@@ -1,12 +1,15 @@
 extends Node
 
-enum Phase { TITLE, CHARSEL, RUNE, DAY, NIGHT, RESULT }
+enum Phase { TITLE, CHARSEL, RUNE, DAY, NIGHT, DAWN, RESULT }
+
+const MAX_DAYS := 2
 
 var phase: Phase = Phase.TITLE
 var rune_id := "power"
 var character_id := "knight"
 var survived := false
 var territory := 0
+var day_index := 1
 
 # Bounding half-extent only (minimap scale / legacy). Walk/build use Island PIP.
 const ISLAND_R := 76.0
@@ -58,6 +61,10 @@ const CHARACTERS := {
 
 func is_live() -> bool:
 	return phase == Phase.DAY or phase == Phase.NIGHT
+
+
+func is_final_night() -> bool:
+	return day_index >= MAX_DAYS
 
 
 func rune_name() -> String:

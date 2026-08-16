@@ -13,6 +13,8 @@ const TOWER_LIMIT := 3
 const SHRINE_LIMIT := 1
 const SHRINE_COST := 8
 const TRIBUTE_INT := 8.0
+const DAWN_LEN := 2.2
+const NIGHT_SPEED_BUMP := 1.12
 
 var font: Font
 var font_bold: Font
@@ -44,6 +46,7 @@ var build_label: Label
 var land_label: Label
 var result_title: Label
 var result_sub: Label
+var result_again: Button
 var chop_bar: ColorRect
 var chop_bar_bg: ColorRect
 var minimap: Control
@@ -62,6 +65,7 @@ var title_orbit := true
 var cam_yaw := 0.35
 var cam_pitch := 0.92
 var result_shown := false
+var dawn_t := -1.0
 var build_mode := false
 var build_kind := "tower"
 var ghost_yaw := 0.0
@@ -670,9 +674,9 @@ func _build_ui() -> void:
 	play_hud.add_child(hint_label)
 
 	night_label = _label("", 22, Color(0.75, 0.82, 1.0), true)
-	night_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	night_label.position = Vector2(1072, 10)
-	night_label.size = Vector2(192, 30)
+	night_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	night_label.position = Vector2(960, 10)
+	night_label.size = Vector2(304, 30)
 	play_hud.add_child(night_label)
 
 	var mm_script := load("res://scripts/minimap.gd")
@@ -735,6 +739,7 @@ func _build_ui() -> void:
 	again.offset_bottom = 118
 	again.pressed.connect(_show_title)
 	result_root.add_child(again)
+	result_again = again
 
 
 func _show_title() -> void:
@@ -749,6 +754,8 @@ func _show_title() -> void:
 	rune_root.visible = false
 	play_hud.visible = false
 	result_root.visible = false
+	if result_again:
+		result_again.visible = true
 	_set_day_look()
 	title_yaw = 0.32
 	title_orbit = true
@@ -773,10 +780,12 @@ func _start_run(id: String) -> void:
 	GameState.phase = GameState.Phase.DAY
 	GameState.survived = false
 	GameState.territory = 0
+	GameState.day_index = 1
 	wood = 0
 	night_t = 0.0
 	post_light_t = -1.0
 	result_shown = false
+	dawn_t = -1.0
 	build_mode = false
 	build_kind = "tower"
 	ghost_yaw = 0.0
@@ -883,7 +892,7 @@ func _on_wood() -> void:
 
 
 func _on_player_died() -> void:
-	if GameState.phase == GameState.Phase.RESULT:
+	if GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
 	_show_result(false)
 
@@ -915,7 +924,9 @@ func _clear_run() -> void:
 	_reset_trees()
 	wood = 0
 	GameState.territory = 0
+	GameState.day_index = 1
 	tribute_t = 0.0
+	dawn_t = -1.0
 
 
 func _set_day_look() -> void:
@@ -936,8 +947,17 @@ func _set_night_look() -> void:
 	sun.rotation_degrees = Vector3(-28, -20, 0)
 
 
+func _wave_counts() -> Array:
+	# Night 1: [3, 4, 5]. Later nights +1 per wave; still 3 waves, woods+shore.
+	var extra: int = maxi(0, GameState.day_index - 1)
+	var out: Array = []
+	for c in WAVE_COUNTS:
+		out.append(int(c) + extra)
+	return out
+
+
 func _begin_night() -> void:
-	if GameState.phase == GameState.Phase.NIGHT or GameState.phase == GameState.Phase.RESULT:
+	if GameState.phase == GameState.Phase.NIGHT or GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
 	GameState.phase = GameState.Phase.NIGHT
 	night_t = NIGHT_LEN
@@ -975,7 +995,9 @@ func _spawn_wave(idx: int) -> void:
 		Vector3(-42.0, Island.height_at(-42.0, -3.2) + 0.9, -3.2),
 		Vector3(-38.0, Island.height_at(-38.0, 6.0) + 0.9, 6.0),
 	]
-	var count := int(WAVE_COUNTS[clampi(idx, 0, WAVE_COUNTS.size() - 1)])
+	var waves: Array = _wave_counts()
+	var last: int = waves.size() - 1
+	var count: int = int(waves[clampi(idx, 0, last)])
 	var kinds := ["warrior", "rogue", "mage", "minion"]
 	var es := load("res://scripts/enemy.gd")
 	for i in count:
@@ -985,6 +1007,8 @@ func _spawn_wave(idx: int) -> void:
 		var en: Node = es.new()
 		world.add_child(en)
 		en.setup(spot, altar, player, "night", kinds[(idx + i) % kinds.size()])
+		if GameState.day_index >= 2:
+			en.speed = float(en.speed) * NIGHT_SPEED_BUMP
 		print("night_wave[", idx, "] n=", i, " kind=", en.skel_kind, " at ", spot)
 
 
@@ -993,6 +1017,15 @@ func _spawn_enemies() -> void:
 
 
 func _show_result(win: bool) -> void:
+	if GameState.phase == GameState.Phase.RESULT:
+		return
+	# Night 1 win is not a dead-end: dawn, then Day 2 on the same island.
+	# VERIFY: _show_result(true) -> _begin_dawn (day_index += 1) -> DAY.
+	# Wood / towers / shrine / keep / trees / chest / rune persist. Night 2 is [4,5,6] + 12% speed.
+	# Night 2 win (day_index >= MAX_DAYS) is the terminal 守住了.
+	if win and not GameState.is_final_night():
+		_begin_dawn()
+		return
 	GameState.phase = GameState.Phase.RESULT
 	GameState.survived = win
 	result_shown = true
@@ -1001,19 +1034,80 @@ func _show_result(win: bool) -> void:
 		ghost.visible = false
 	play_hud.visible = true
 	result_root.visible = true
+	if result_again:
+		result_again.visible = true
 	if win:
 		Sfx.play("win")
-		result_title.text = "你守住了今晚"
+		result_title.text = "守住了"
 		result_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.5))
 		if GameState.territory >= 1:
-			result_sub.text = "占下一处地盘，择日反攻"
+			result_sub.text = "第%d夜已过。雾火还在燃烧。" % GameState.day_index
 		else:
-			result_sub.text = "流放者的火种还在。Mistfire held."
+			result_sub.text = "第%d夜已过。流放者的火种还在。" % GameState.day_index
 	else:
 		Sfx.play("lose")
 		result_title.text = "流放失败"
 		result_title.add_theme_color_override("font_color", Color(0.95, 0.42, 0.38))
 		result_sub.text = "雾影吞没了祭坛。再来一次。"
+	_refresh_hud()
+
+
+func _clear_night_mobs() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		if e.is_in_group("guards") or e.is_in_group("wilds") or e.is_in_group("dummies"):
+			continue
+		e.queue_free()
+	for p in get_tree().get_nodes_in_group("projectiles"):
+		if is_instance_valid(p):
+			p.queue_free()
+
+
+func _begin_dawn() -> void:
+	if GameState.phase == GameState.Phase.DAWN:
+		return
+	GameState.phase = GameState.Phase.DAWN
+	GameState.survived = true
+	GameState.day_index += 1
+	result_shown = false
+	build_mode = false
+	dawn_t = DAWN_LEN
+	night_t = 0.0
+	wave_i = 0
+	wave_wait = 0.0
+	post_light_t = -1.0
+	if ghost and is_instance_valid(ghost):
+		ghost.visible = false
+	_clear_night_mobs()
+	_set_day_look()
+	# Same island: do not reset trees, towers, shrine, keep, chest, wood, rune.
+	if altar and altar.lit:
+		if camp and camp.occupied:
+			post_light_t = POST_OCCUPY
+		else:
+			post_light_t = POST_LIGHT
+	if player and is_instance_valid(player):
+		player.hp = player.max_hp
+		player.invuln = 1.2
+	play_hud.visible = true
+	result_root.visible = true
+	if result_again:
+		result_again.visible = false
+	result_title.text = "破晓"
+	result_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.5))
+	result_sub.text = "第%d天 · 火种还在" % GameState.day_index
+	Sfx.play("confirm")
+	print("dawn day=", GameState.day_index, " wood=", player.wood if player else -1, " towers=", _tower_count(), " shrine=", _shrine_count(), " keep=", GameState.territory, " altar=", altar.lit if altar else false)
+	_refresh_hud()
+
+
+func _finish_dawn() -> void:
+	dawn_t = -1.0
+	result_root.visible = false
+	if result_again:
+		result_again.visible = true
+	GameState.phase = GameState.Phase.DAY
 	_refresh_hud()
 
 
@@ -1053,12 +1147,18 @@ func _refresh_hud() -> void:
 			build_label.text = "筑:火塔 已满  %d/%d" % [n, TOWER_LIMIT]
 		else:
 			build_label.text = "筑:火塔 %d木  %d/%d" % [cost, n, TOWER_LIMIT]
-	land_label.text = "领地  %d/1" % GameState.territory
+	land_label.text = "领地  %d/1  ·  第%d天" % [GameState.territory, GameState.day_index]
 	hint_label.text = _hint_text()
+	var day_s := "第%d天" % GameState.day_index
 	if GameState.phase == GameState.Phase.NIGHT:
-		night_label.text = "夜 %d/%d波  %.0fs" % [wave_i + 1, WAVE_COUNTS.size(), maxf(0.0, night_t)]
+		var waves: Array = _wave_counts()
+		night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
+	elif GameState.phase == GameState.Phase.DAWN:
+		night_label.text = day_s
 	elif post_light_t >= 0.0:
-		night_label.text = "夜将至  %.0fs" % maxf(0.0, post_light_t)
+		night_label.text = "%s  夜将至  %.0fs" % [day_s, maxf(0.0, post_light_t)]
+	elif GameState.phase == GameState.Phase.DAY:
+		night_label.text = day_s
 	else:
 		night_label.text = ""
 
@@ -1082,6 +1182,8 @@ func _hint_text() -> String:
 			if altar and altar.lit:
 				return "守夜  Space 攻击  ·  火塔/骨祠/火种"
 			return "守夜  Space 攻击  ·  火种未燃，更危险"
+		GameState.Phase.DAWN:
+			return "破晓  第%d天" % GameState.day_index
 		_:
 			return ""
 
@@ -1541,7 +1643,8 @@ func _process(delta: float) -> void:
 			return
 		var living := _night_living()
 		if living <= 0:
-			if wave_i + 1 < WAVE_COUNTS.size():
+			var waves: Array = _wave_counts()
+			if wave_i + 1 < waves.size():
 				wave_wait += delta
 				if wave_wait >= WAVE_GAP:
 					wave_i += 1
@@ -1551,6 +1654,15 @@ func _process(delta: float) -> void:
 				night_t = 2.5
 		if night_t <= 0.0:
 			_show_result(true)
+		_refresh_hud()
+
+	elif GameState.phase == GameState.Phase.DAWN:
+		chop_bar.visible = false
+		chop_bar_bg.visible = false
+		if dawn_t >= 0.0:
+			dawn_t -= delta
+		if dawn_t <= 0.0 or Input.is_action_just_pressed("interact"):
+			_finish_dawn()
 		_refresh_hud()
 
 
@@ -1597,6 +1709,10 @@ func _maybe_shot() -> void:
 		return
 	if shot == "loop":
 		await _run_loop_verify()
+		get_tree().quit()
+		return
+	if shot == "day2":
+		await _run_day2_verify()
 		get_tree().quit()
 		return
 	if shot == "atk":
@@ -2355,6 +2471,141 @@ func _loop_tap(action: String) -> void:
 	await get_tree().process_frame
 
 
+func _run_day2_verify() -> void:
+	# VERIFY note: night1 win -> dawn overlay -> Day 2 on the same island.
+	# Persist wood/towers/shrine/keep/trees/chest/rune. Night2 waves [4,5,6]. Night2 win -> 守住了.
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum DAY2 VERIFY")
+	lines.append("============================")
+	lines.append("Night 1 win must dawn into 第2天, not a 再来-only dead end.")
+	lines.append("")
+
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	await get_tree().create_timer(0.2).timeout
+	if player:
+		player.grant_wood(20)
+	_loop_warp(Vector3(2.6, 0.9, 2.2), Vector3(-1, 0, -1))
+	await get_tree().create_timer(0.12).timeout
+	_try_light_altar()
+	if altar and not altar.lit:
+		altar.light_fire()
+		post_light_t = POST_LIGHT
+	if player and player.wood < GameState.tower_cost():
+		player.grant_wood(GameState.tower_cost())
+	_loop_warp(Vector3(0.4, 0.9, -7.2), Vector3(0, 0, -1))
+	_set_build(true)
+	_try_place_tower()
+	if _tower_count() < 1:
+		var ts := load("res://scripts/fire_tower.gd")
+		var tw: Node = ts.new()
+		world.add_child(tw)
+		tw.setup(Vector3(0.5, 0.0, -10.5), 0.0, false)
+	_set_build(false)
+	_loop_warp(Vector3(-2.0, 0.9, -36.5), Vector3(0, 0, -1))
+	for g in get_tree().get_nodes_in_group("guards"):
+		if is_instance_valid(g) and not g.dead:
+			g.take_hit(80.0, Vector3.ZERO)
+	await get_tree().create_timer(0.12).timeout
+	_loop_warp(Vector3(-2.2, 0.9, -41.2), Vector3(0, 0, -1))
+	_try_occupy()
+	if camp and not camp.occupied:
+		camp.occupy(GameState.rune_color(GameState.rune_id))
+		GameState.territory = 1
+	var wood0: int = player.wood if player else -1
+	var towers0: int = _tower_count()
+	var keep0: int = GameState.territory
+	var lit0: bool = altar != null and altar.lit
+	var down0 := 0
+	for t in get_tree().get_nodes_in_group("trees"):
+		if t.is_down:
+			down0 += 1
+	if chest and is_instance_valid(chest) and not chest.opened:
+		_loop_warp(chest.global_position + Vector3(-1.4, 0, 1.2), Vector3(0.7, 0, -0.5))
+		_try_chest()
+	var chest0: bool = chest != null and chest.opened
+	lines.append("night1 setup wood=%d towers=%d keep=%d altar=%s chest=%s trees_down=%d" % [
+		wood0, towers0, keep0, "Y" if lit0 else "N", "Y" if chest0 else "N", down0])
+
+	_begin_night()
+	await get_tree().process_frame
+	_show_result(true)
+	var dawn_ok: bool = GameState.phase == GameState.Phase.DAWN and GameState.day_index == 2
+	lines.append("after night1: phase=%s day=%d dawn_title=%s again=%s" % [
+		str(GameState.phase), GameState.day_index,
+		result_title.text if result_title else "",
+		"hidden" if (result_again and not result_again.visible) else "shown"])
+	print("DAY2 dawn_ok=", dawn_ok, " day=", GameState.day_index, " phase=", GameState.phase)
+	if GameState.phase == GameState.Phase.DAWN:
+		await get_tree().create_timer(DAWN_LEN + 0.35).timeout
+	var day_ok: bool = GameState.phase == GameState.Phase.DAY and GameState.day_index == 2
+	var persist_ok: bool = player != null and player.wood == wood0 and _tower_count() == towers0 and GameState.territory == keep0
+	var altar_ok: bool = altar != null and altar.lit == lit0
+	var chest_ok: bool = chest != null and chest.opened == chest0
+	var down1 := 0
+	for t2 in get_tree().get_nodes_in_group("trees"):
+		if t2.is_down:
+			down1 += 1
+	var hud_s := night_label.text if night_label else ""
+	var land_s := land_label.text if land_label else ""
+	lines.append("day2 playable: phase=%s day=%d wood=%d towers=%d keep=%d altar=%s chest=%s trees_down=%d hud=%s land=%s" % [
+		str(GameState.phase), GameState.day_index,
+		player.wood if player else -1, _tower_count(), GameState.territory,
+		"Y" if (altar and altar.lit) else "N", "Y" if (chest and chest.opened) else "N",
+		down1, hud_s, land_s])
+	print("DAY2 day_ok=", day_ok, " persist=", persist_ok, " hud=", hud_s)
+
+	_begin_night()
+	await get_tree().create_timer(0.2).timeout
+	var n2_waves: Array = _wave_counts()
+	var n2_living: int = _night_living()
+	lines.append("night2 waves=%s living=%d (want [4, 5, 6] / 4)" % [str(n2_waves), n2_living])
+	print("DAY2 night2 waves=", n2_waves, " living=", n2_living)
+	_show_result(true)
+	var final_ok: bool = GameState.phase == GameState.Phase.RESULT and GameState.survived and result_title.text == "守住了"
+	lines.append("night2 final: phase=%s title=%s sub=%s again=%s" % [
+		str(GameState.phase), result_title.text if result_title else "",
+		result_sub.text if result_sub else "",
+		"shown" if (result_again and result_again.visible) else "hidden"])
+
+	lines.append("")
+	var gaps: Array = []
+	if not dawn_ok:
+		gaps.append("dawn")
+	if not day_ok:
+		gaps.append("day2-phase")
+	if not persist_ok:
+		gaps.append("persist")
+	if not altar_ok:
+		gaps.append("altar")
+	if not chest_ok:
+		gaps.append("chest")
+	if down1 != down0:
+		gaps.append("trees")
+	if hud_s.find("第2天") < 0 and land_s.find("第2天") < 0:
+		gaps.append("hud-day")
+	if n2_living < 4:
+		gaps.append("night2-harder")
+	if not final_ok:
+		gaps.append("final-win")
+	if gaps.is_empty():
+		lines.append("DoD: night1 -> 破晓 -> 第2天 persist -> harder night2 -> 守住了.")
+	else:
+		var gap := ""
+		for i in gaps.size():
+			if i > 0:
+				gap += ", "
+			gap += str(gaps[i])
+		lines.append("DoD GAPS: " + gap)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/DAY2_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("DAY2_VERIFY written\n", text)
+
+
 func _run_loop_verify() -> void:
 	var lines: PackedStringArray = PackedStringArray()
 	var fixed: PackedStringArray = PackedStringArray()
@@ -2535,18 +2786,49 @@ func _run_loop_verify() -> void:
 	var night_result := "unknown"
 	if GameState.phase == GameState.Phase.RESULT:
 		night_result = "WIN" if GameState.survived else "FAIL"
+	elif GameState.phase == GameState.Phase.DAWN:
+		night_result = "WIN"
+	elif GameState.phase == GameState.Phase.DAY and GameState.day_index >= 2:
+		night_result = "WIN"
 	elif night_t <= 0.0:
 		night_result = "timer-ended (result pending)"
 	else:
 		night_result = "STILL_NIGHT t=%.1f" % night_t
 		_show_result(player != null and player.hp > 0.0)
-		night_result = "WIN" if GameState.survived else "FAIL"
+		if GameState.survived or GameState.phase == GameState.Phase.DAWN:
+			night_result = "WIN"
+		else:
+			night_result = "FAIL"
 	lines.append("night enemies: %d  moved: %d  damaged: %d" % [e_n, e_moved, e_hurt])
 	for s in spots:
 		lines.append("  " + s)
 	lines.append("night result: %s  player_hp=%d  altar_lit=%s" % [
 		night_result, int(player.hp) if player else -1, "Y" if (altar and altar.lit) else "N"])
 	print("LOOP night ", night_result, " enemies=", e_n, " moved=", e_moved, " hurt=", e_hurt)
+
+	# Day 2: night-1 win must dawn, not dump into 再来-only.
+	var persist_wood: int = player.wood if player else -1
+	var persist_towers: int = _tower_count()
+	var persist_keep: int = GameState.territory
+	if GameState.phase == GameState.Phase.NIGHT and player and player.hp > 0.0:
+		_show_result(true)
+	if GameState.phase == GameState.Phase.DAWN:
+		await get_tree().create_timer(DAWN_LEN + 0.35).timeout
+	var hud_day := night_label.text if night_label else ""
+	var land_day := land_label.text if land_label else ""
+	lines.append("day2: index=%d phase=%s wood=%d towers=%d keep=%d altar=%s hud=%s land=%s" % [
+		GameState.day_index, str(GameState.phase), persist_wood, persist_towers, persist_keep,
+		"Y" if (altar and altar.lit) else "N", hud_day, land_day])
+	print("LOOP day2 index=", GameState.day_index, " phase=", GameState.phase, " hud=", hud_day)
+	if GameState.phase == GameState.Phase.DAY and GameState.day_index >= 2:
+		_begin_night()
+		await get_tree().create_timer(0.25).timeout
+		var n2_living: int = _night_living()
+		var n2_waves: Array = _wave_counts()
+		lines.append("night2 waves=%s living=%d" % [str(n2_waves), n2_living])
+		print("LOOP night2 waves=", n2_waves, " living=", n2_living)
+		_show_result(true)
+		lines.append("night2 result title=%s  phase=%s" % [result_title.text if result_title else "", str(GameState.phase)])
 
 	lines.append("")
 	lines.append("What worked")
@@ -2562,6 +2844,8 @@ func _run_loop_verify() -> void:
 		lines.append("- Night units spawned from woods/shore, path, and took damage.")
 	if night_result == "WIN":
 		lines.append("- Night ended in a win after the timer.")
+		if GameState.day_index >= 2:
+			lines.append("- Dawn rolled into 第%d天 (not a 再来-only dead end)." % GameState.day_index)
 	elif night_result == "FAIL":
 		lines.append("- Night ended in a clear fail (player down).")
 
