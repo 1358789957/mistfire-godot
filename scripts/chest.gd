@@ -3,7 +3,7 @@ extends StaticBody3D
 const CHEST_PATH := "res://assets/kaykit_dungeon/chest.glb"
 const CHEST_GOLD := "res://assets/kaykit_dungeon/chest_gold.glb"
 
-var opened := false
+var opened: bool = false
 var _lid: Node3D
 var _visual: Node3D
 

@@ -1,0 +1,7 @@
+Mistfire Sanctum WILDS VERIFY
+=============================
+wilds warrior=Y mage=Y rogue=Y
+first bone drop=Y wood 0->2 flash=骨 +2
+mage bone drop=Y wood 2->3
+chest kaykit hint=E 开箱 opened=Y
+DoD: daytime forest reward — bright bone, 骨 +N, first +2, mage same, E 开箱.

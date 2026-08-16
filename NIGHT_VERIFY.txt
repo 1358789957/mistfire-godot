@@ -1,0 +1,8 @@
+Mistfire Sanctum NIGHT VERIFY
+=============================
+wave1 flash=第1波 · 林 hud=第1天  夜 1/3波  52s living=3
+clear flash=波次清空 hud=第1天  夜 1/3波  下一波 5s wait=0.14
+wave2 flash=第2波 · 林与岸 hud=第1天  夜 2/3波  50s living=4 i=1
+altar hp=1 flash=祭坛危
+shrine flash=骨祠破 count=0
+DoD: night siege banners — 第N波 + 林/岸, 波次清空 then 5s 下一波, 祭坛危, 骨祠破.

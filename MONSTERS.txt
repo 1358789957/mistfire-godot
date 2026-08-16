@@ -9,4 +9,5 @@ Kits:
   rogue    crossbow               bolt
   mage     staff                  orb
   minion   axe                    wide chop
-Death plays Death_C_Skeletons then frees. Wilds drop 1 wood.
+Death plays Death_C_Skeletons then frees. Wilds drop a bright bone
+(+1 wood, HUD/float 骨 +1). First bone of the day is +2. Chest: E 开箱.

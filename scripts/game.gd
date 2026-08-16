@@ -2,6 +2,7 @@ extends Node3D
 
 const Kaykit := preload("res://scripts/kaykit.gd")
 const Island := preload("res://scripts/island.gd")
+const Mats := preload("res://scripts/mats.gd")
 
 const WOOD_NEED := 8
 const NIGHT_LEN := 52.0
@@ -59,6 +60,9 @@ var wood := 0
 var night_t := 0.0
 var wave_i := 0
 var wave_wait := 0.0
+var _wave_cleared := false
+var _altar_danger_flashed := false
+var _had_live_shrine := false
 var _night_lit := false
 var chest: Node3D
 var _monster_close := false
@@ -388,7 +392,7 @@ func _make_ridge() -> void:
 		[Vector3(47.6, 0.20, 37.0), 0.85],
 		[Vector3(43.0, 0.20, 40.5), 1.15],
 	]
-	var mat := Mats.textured(Mats.dirt_tex(), Color(0.90, 0.80, 0.64), Vector3(2, 1, 2))
+	var mat: StandardMaterial3D = Mats.textured(Mats.dirt_tex(), Color(0.90, 0.80, 0.64), Vector3(2, 1, 2))
 	for b in berms:
 		var body := StaticBody3D.new()
 		body.position = b[0]
@@ -796,8 +800,14 @@ func _start_run(id: String) -> void:
 	GameState.survived = false
 	GameState.territory = 0
 	GameState.day_index = 1
+	GameState.wild_bone_today = false
 	wood = 0
 	night_t = 0.0
+	wave_i = 0
+	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 	post_light_t = -1.0
 	result_shown = false
 	dawn_t = -1.0
@@ -852,6 +862,7 @@ func _spawn_player() -> void:
 	player.wood_gained.connect(_on_wood)
 	player.core_saved.connect(_on_core_saved)
 	player.power_struck.connect(_on_power_struck)
+	player.loot_noted.connect(_on_loot_noted)
 	_ensure_puppet_golem()
 
 
@@ -870,9 +881,20 @@ func _try_chest() -> void:
 		return
 	if player == null:
 		return
-	var d := Vector3(chest.global_position.x - player.global_position.x, 0, chest.global_position.z - player.global_position.z).length()
-	if d < 2.4:
+	if _chest_dist() < 2.4:
 		chest.try_open()
+
+
+func _chest_dist() -> float:
+	if chest == null or not is_instance_valid(chest) or player == null:
+		return 999.0
+	return Vector3(chest.global_position.x - player.global_position.x, 0, chest.global_position.z - player.global_position.z).length()
+
+
+func _near_chest(dist: float = 3.4) -> bool:
+	if chest == null or not is_instance_valid(chest) or chest.opened:
+		return false
+	return _chest_dist() < dist
 
 
 func _spawn_wilds() -> void:
@@ -909,6 +931,10 @@ func _spawn_guards() -> void:
 func _on_wood() -> void:
 	wood = player.wood
 	_refresh_hud()
+
+
+func _on_loot_noted(text: String) -> void:
+	_flash_hud(text, Color(0.98, 0.88, 0.48), 0.90)
 
 
 func _on_player_died() -> void:
@@ -1003,8 +1029,14 @@ func _clear_run() -> void:
 	wood = 0
 	GameState.territory = 0
 	GameState.day_index = 1
+	GameState.wild_bone_today = false
 	tribute_t = 0.0
 	dawn_t = -1.0
+	wave_i = 0
+	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 
 
 func _set_day_look() -> void:
@@ -1059,13 +1091,15 @@ func _begin_night() -> void:
 	post_light_t = -1.0
 	wave_i = 0
 	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = _shrine_count() > 0
 	_night_lit = altar != null and altar.lit
 	_set_night_look()
 	_spawn_wave(0)
 	_ensure_puppet_golem()
 	if player and is_instance_valid(player):
 		player.arm_core_save()
-	Sfx.play("night")
 	_refresh_hud()
 
 
@@ -1080,12 +1114,63 @@ func _night_living() -> int:
 	return n
 
 
+func _wave_side_label(count: int, pool: Array) -> String:
+	var woods := false
+	var shore := false
+	for i in count:
+		var spot: Vector3 = pool[i % pool.size()]
+		if float(spot.x) >= 0.0:
+			woods = true
+		else:
+			shore = true
+	if woods and shore:
+		return "林与岸"
+	if shore:
+		return "岸"
+	return "林"
+
+
+func _announce_wave(idx: int, side: String) -> void:
+	var n: int = idx + 1
+	var text := "第%d波 · %s" % [n, side]
+	_flash_hud(text, Color(0.78, 0.88, 1.0), 1.55)
+	Sfx.play("night")
+	print("wave_start n=", n, " side=", side)
+
+
+func _note_wave_clear() -> void:
+	if _wave_cleared:
+		return
+	_wave_cleared = true
+	_flash_hud("波次清空", Color(0.98, 0.86, 0.52), 1.40)
+	Sfx.play("confirm")
+	print("wave_clear i=", wave_i)
+
+
+func _tick_siege_alerts() -> void:
+	if GameState.phase != GameState.Phase.NIGHT:
+		return
+	if altar and altar.lit and int(altar.hp) == 1 and not _altar_danger_flashed:
+		_altar_danger_flashed = true
+		_flash_hud("祭坛危", Color(1.0, 0.38, 0.32), 1.70)
+		Sfx.play("error")
+	var sn: int = _shrine_count()
+	if _had_live_shrine and sn <= 0:
+		_had_live_shrine = false
+		_flash_hud("骨祠破", Color(0.95, 0.62, 0.36), 1.55)
+		Sfx.play("error")
+	elif sn > 0:
+		_had_live_shrine = true
+
+
 func _spawn_wave(idx: int) -> void:
+	_wave_cleared = false
+	wave_wait = 0.0
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.is_in_group("guards") or e.is_in_group("wilds"):
 			continue
 		e.queue_free()
-	var pool := [
+	var pool: Array = [
 		Vector3(32.0, Island.height_at(32.0, 2.2) + 0.9, 2.2),
 		Vector3(40.0, Island.height_at(40.0, 16.0) + 0.9, 16.0),
 		Vector3(36.0, Island.height_at(36.0, 8.0) + 0.9, 8.0),
@@ -1096,7 +1181,8 @@ func _spawn_wave(idx: int) -> void:
 	var waves: Array = _wave_counts()
 	var last: int = waves.size() - 1
 	var count: int = int(waves[clampi(idx, 0, last)])
-	var kinds := ["warrior", "rogue", "mage", "minion"]
+	var side: String = _wave_side_label(count, pool)
+	var kinds: Array = ["warrior", "rogue", "mage", "minion"]
 	var es := load("res://scripts/enemy.gd")
 	for i in count:
 		var spot: Vector3 = pool[i % pool.size()]
@@ -1108,6 +1194,7 @@ func _spawn_wave(idx: int) -> void:
 		if GameState.day_index >= 2:
 			en.speed = float(en.speed) * NIGHT_SPEED_BUMP
 		print("night_wave[", idx, "] n=", i, " kind=", en.skel_kind, " at ", spot)
+	_announce_wave(idx, side)
 
 
 func _spawn_enemies() -> void:
@@ -1175,11 +1262,16 @@ func _begin_dawn() -> void:
 	night_t = 0.0
 	wave_i = 0
 	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 	post_light_t = -1.0
 	if ghost and is_instance_valid(ghost):
 		ghost.visible = false
 	_clear_night_mobs()
 	_set_day_look()
+	GameState.wild_bone_today = false
+	_spawn_wilds()
 	# Same island: do not reset trees, towers, shrine, keep, chest, wood, rune.
 	if altar and altar.lit:
 		if camp and camp.occupied:
@@ -1262,7 +1354,11 @@ func _refresh_hud() -> void:
 	var day_s := "第%d天" % GameState.day_index
 	if GameState.phase == GameState.Phase.NIGHT:
 		var waves: Array = _wave_counts()
-		night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
+		var living_n: int = _night_living()
+		if living_n <= 0 and wave_i + 1 < waves.size():
+			night_label.text = "%s  夜 %d/%d波  下一波 %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, WAVE_GAP - wave_wait)]
+		else:
+			night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
 	elif GameState.phase == GameState.Phase.DAWN:
 		night_label.text = day_s
 	elif post_light_t >= 0.0:
@@ -1283,6 +1379,8 @@ func _hint_text() -> String:
 		if GameState.rune_id == "precise":
 			return "建造火塔  F放置(%d木双焰)  R旋转  B切骨祠" % cost
 		return "建造火塔  F放置(%d木)  R旋转  B切骨祠" % cost
+	if GameState.phase == GameState.Phase.DAY and _near_chest():
+		return "E 开箱"
 	match GameState.phase:
 		GameState.Phase.DAY:
 			if player and player.wood < WOOD_NEED and (altar == null or not altar.lit):
@@ -1679,7 +1777,7 @@ func _process(delta: float) -> void:
 		camera.position = Vector3(1.35, 2.05, 4.4)
 		camera.look_at(player.global_position + Vector3(1.55, 0.88, 0.2))
 		return
-	if OS.get_environment("MISTFIRE_SHOT") == "wilds" and player and is_instance_valid(player):
+	if OS.get_environment("MISTFIRE_SHOT").to_lower() == "wilds" and _shot_focus == "glade" and player and is_instance_valid(player):
 		cam_pivot.global_position = player.global_position
 		cam_pivot.rotation.y = 0.0
 		camera.fov = 34.0
@@ -1712,7 +1810,7 @@ func _process(delta: float) -> void:
 		camera.look_at(player.global_position + Vector3(0.0, 1.15, 0.0))
 		return
 
-	if player and is_instance_valid(player) and OS.get_environment("MISTFIRE_SHOT") != "atk":
+	if player and is_instance_valid(player) and OS.get_environment("MISTFIRE_SHOT") != "atk" and _shot_focus != "loot":
 		player.cam_yaw = cam_yaw
 		cam_pivot.global_position = player.global_position
 		cam_pivot.rotation.y = cam_yaw
@@ -1776,9 +1874,11 @@ func _process(delta: float) -> void:
 			_show_result(false)
 			_refresh_hud()
 			return
-		var living := _night_living()
+		_tick_siege_alerts()
+		var living: int = _night_living()
 		if living <= 0:
 			var waves: Array = _wave_counts()
+			_note_wave_clear()
 			if wave_i + 1 < waves.size():
 				wave_wait += delta
 				if wave_wait >= WAVE_GAP:
@@ -1872,6 +1972,14 @@ func _maybe_shot() -> void:
 		return
 	if shot.to_lower() == "precise":
 		await _run_precise_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "wilds":
+		await _run_wilds_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "night":
+		await _run_night_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2249,23 +2357,6 @@ func _maybe_shot() -> void:
 		await get_tree().create_timer(1.6).timeout
 		await _save_shot("/workspace/mistfire-godot/shot-night-skel.png")
 		get_tree().quit()
-	elif shot == "night":
-		await get_tree().process_frame
-		GameState.character_id = "knight"
-		_start_run("power")
-		if player and is_instance_valid(player):
-			player.global_position = Vector3(18.5, 0.9, 2.4)
-			player.rotation.y = 1.15
-			player.facing = Vector3(1.0, 0.0, 0.0)
-		cam_yaw = -1.15
-		_begin_night()
-		print("VERIFY night forced Knight+力量")
-		await get_tree().create_timer(2.1).timeout
-		for e in get_tree().get_nodes_in_group("enemies"):
-			if is_instance_valid(e) and not e.is_in_group("guards"):
-				print("VERIFY enemy tag=", e.spawn_tag, " kind=", e.skel_kind, " pos=", e.global_position, " dest=altar")
-		await _save_shot("/workspace/mistfire-godot/shot-night.png")
-		get_tree().quit()
 	else:
 		title_orbit = false
 		title_yaw = 0.28
@@ -2327,8 +2418,18 @@ func _run_shore_verify() -> void:
 
 func _save_shot(path: String) -> void:
 	await get_tree().process_frame
+	if DisplayServer.get_name() == "headless":
+		print("saved shot skipped (headless) ", path)
+		return
 	await RenderingServer.frame_post_draw
-	var img := get_viewport().get_texture().get_image()
+	var tex := get_viewport().get_texture()
+	if tex == null:
+		print("saved shot skip null tex ", path)
+		return
+	var img := tex.get_image()
+	if img == null:
+		print("saved shot skip null img ", path)
+		return
 	var err := img.save_png(path)
 	print("saved shot ", path, " err=", err)
 
@@ -2934,6 +3035,267 @@ func _run_precise_verify() -> void:
 		out.store_string(text)
 		out.close()
 	print("PRECISE_VERIFY written\n", text)
+
+
+func _wait_pickup(p_kind: String, timeout: float) -> Node3D:
+	var left: float = timeout
+	while left > 0.0:
+		await get_tree().create_timer(0.05).timeout
+		left -= 0.05
+		for n in get_tree().get_nodes_in_group("pickups"):
+			if is_instance_valid(n) and str(n.kind) == p_kind:
+				return n
+	return null
+
+
+func _wait_wood_gt(prev: int, timeout: float) -> int:
+	var left: float = timeout
+	while left > 0.0:
+		await get_tree().create_timer(0.05).timeout
+		left -= 0.05
+		if player and is_instance_valid(player) and player.wood > prev:
+			return player.wood
+	return player.wood if player else prev
+
+
+func _frame_loot_cam(look_at: Vector3) -> void:
+	var look := look_at + Vector3(0.0, 0.42, 0.0)
+	cam_pivot.global_position = look
+	cam_pivot.rotation.y = 0.0
+	camera.fov = 32.0
+	camera.position = Vector3(1.25, 1.45, 2.35)
+	camera.look_at(look)
+
+
+func _run_night_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum NIGHT VERIFY")
+	lines.append("=============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	title_root.visible = false
+	play_hud.visible = true
+	if altar and not altar.lit:
+		altar.light_fire()
+	if player and is_instance_valid(player):
+		player.global_position = Vector3(18.5, 0.9, 2.4)
+		player.rotation.y = 1.15
+		player.facing = Vector3(1.0, 0.0, 0.0)
+		player.invuln = 60.0
+	cam_yaw = -1.15
+	_begin_night()
+	print("VERIFY night forced Knight+力量")
+	var wave1: String = flash_label.text if flash_label else ""
+	var hud1: String = night_label.text if night_label else ""
+	var living1: int = _night_living()
+	var wave1_ok: bool = wave1.find("第1波") >= 0 and wave1.find("林") >= 0
+	var hud1_ok: bool = hud1.find("夜") >= 0 and hud1.find("1/") >= 0
+	lines.append("wave1 flash=%s hud=%s living=%d" % [wave1, hud1, living1])
+	print("NIGHT wave1 flash=", wave1, " hud=", hud1, " living=", living1)
+
+	await get_tree().create_timer(1.35).timeout
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and not e.is_in_group("guards") and not e.is_in_group("wilds") and not e.is_in_group("dummies"):
+			print("VERIFY enemy tag=", e.spawn_tag, " kind=", e.skel_kind, " pos=", e.global_position, " dest=altar")
+	await _save_shot("/workspace/mistfire-godot/shot-night.png")
+	await _save_shot("/workspace/shot-night.png")
+
+	for e2 in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e2) or e2.is_in_group("guards") or e2.is_in_group("wilds") or e2.is_in_group("dummies"):
+			continue
+		e2.take_hit(400.0, Vector3.ZERO)
+	await get_tree().create_timer(0.14).timeout
+	var clear_s: String = flash_label.text if flash_label else ""
+	var gap_hud: String = night_label.text if night_label else ""
+	var clear_ok: bool = clear_s.find("波次清空") >= 0
+	var gap_ok: bool = gap_hud.find("下一波") >= 0
+	lines.append("clear flash=%s hud=%s wait=%.2f" % [clear_s, gap_hud, wave_wait])
+	print("NIGHT clear flash=", clear_s, " hud=", gap_hud, " wait=", wave_wait)
+
+	wave_wait = WAVE_GAP
+	await get_tree().create_timer(0.10).timeout
+	var wave2: String = flash_label.text if flash_label else ""
+	var hud2: String = night_label.text if night_label else ""
+	var living2: int = _night_living()
+	var wave2_ok: bool = wave2.find("第2波") >= 0 and wave2.find("林与岸") >= 0
+	var beat_ok: bool = living2 > 0 and wave_i == 1
+	lines.append("wave2 flash=%s hud=%s living=%d i=%d" % [wave2, hud2, living2, wave_i])
+	print("NIGHT wave2 flash=", wave2, " hud=", hud2, " living=", living2, " i=", wave_i)
+
+	if altar:
+		while int(altar.hp) > 1:
+			altar.smash()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var altar_s: String = flash_label.text if flash_label else ""
+	var altar_hp: int = int(altar.hp) if altar else -1
+	var altar_ok: bool = altar_s.find("祭坛危") >= 0 and altar_hp == 1
+	lines.append("altar hp=%d flash=%s" % [altar_hp, altar_s])
+	print("NIGHT altar hp=", altar_hp, " flash=", altar_s)
+
+	var sh: Node = _place_verify_shrine()
+	await get_tree().process_frame
+	if sh and is_instance_valid(sh):
+		while is_instance_valid(sh) and not bool(sh.get("broken")):
+			sh.smash()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var shrine_s: String = flash_label.text if flash_label else ""
+	var shrine_ok: bool = shrine_s.find("骨祠破") >= 0
+	lines.append("shrine flash=%s count=%d" % [shrine_s, _shrine_count()])
+	print("NIGHT shrine flash=", shrine_s, " count=", _shrine_count())
+
+	var gaps: Array = []
+	if not wave1_ok:
+		gaps.append("wave1-banner")
+	if not hud1_ok:
+		gaps.append("wave1-hud")
+	if living1 < 3:
+		gaps.append("wave1-mobs")
+	if not clear_ok:
+		gaps.append("clear-banner")
+	if not gap_ok:
+		gaps.append("gap-hud")
+	if not wave2_ok:
+		gaps.append("wave2-banner")
+	if not beat_ok:
+		gaps.append("wave2-beat")
+	if not altar_ok:
+		gaps.append("altar-danger")
+	if not shrine_ok:
+		gaps.append("shrine-break")
+	if gaps.is_empty():
+		lines.append("DoD: night siege banners — 第N波 + 林/岸, 波次清空 then 5s 下一波, 祭坛危, 骨祠破.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/NIGHT_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/NIGHT_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("NIGHT_VERIFY written\n", text)
+
+
+func _run_wilds_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum WILDS VERIFY")
+	lines.append("=============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	_shot_focus = "loot"
+	title_root.visible = false
+	play_hud.visible = true
+	await get_tree().create_timer(0.18).timeout
+
+	var warrior: Node = null
+	var mage: Node = null
+	var rogue: Node = null
+	for e in get_tree().get_nodes_in_group("wilds"):
+		if not is_instance_valid(e):
+			continue
+		if e.skel_kind == "warrior":
+			warrior = e
+		elif e.skel_kind == "mage":
+			mage = e
+		elif e.skel_kind == "rogue":
+			rogue = e
+	lines.append("wilds warrior=%s mage=%s rogue=%s" % [
+		"Y" if warrior else "N", "Y" if mage else "N", "Y" if rogue else "N"])
+	print("WILDS kinds warrior=", warrior != null, " mage=", mage != null, " rogue=", rogue != null)
+	if player:
+		player.invuln = 40.0
+	for e in get_tree().get_nodes_in_group("wilds"):
+		if is_instance_valid(e) and e != warrior and e != mage:
+			e.speed = 0.0
+			e.leash = 0.2
+
+	var wood0: int = player.wood if player else -1
+	if warrior and is_instance_valid(warrior):
+		warrior.take_hit(200.0, Vector3.ZERO)
+	var bone: Node3D = await _wait_pickup("bone", 1.8)
+	var drop_ok: bool = bone != null
+	if bone:
+		_frame_loot_cam(bone.global_position)
+		await get_tree().create_timer(0.28).timeout
+		await _save_shot("/workspace/shot-wild-bone.png")
+		if player:
+			_loop_warp(bone.global_position + Vector3(0.15, 0.0, 0.15))
+	var wood1: int = await _wait_wood_gt(wood0, 1.5)
+	var flash_s: String = flash_label.text if flash_label else ""
+	var first_ok: bool = wood1 >= wood0 + 2
+	var flash_ok: bool = flash_s.find("骨") >= 0
+	lines.append("first bone drop=%s wood %d->%d flash=%s" % [
+		"Y" if drop_ok else "N", wood0, wood1, flash_s])
+	print("WILDS first drop=", drop_ok, " wood=", wood0, "->", wood1, " flash=", flash_s)
+
+	var wood2: int = wood1
+	if mage and is_instance_valid(mage):
+		mage.take_hit(200.0, Vector3.ZERO)
+	var bone2: Node3D = await _wait_pickup("bone", 1.8)
+	var mage_drop: bool = bone2 != null
+	if bone2 and player:
+		_loop_warp(bone2.global_position + Vector3(0.12, 0.0, 0.12))
+	var wood3: int = await _wait_wood_gt(wood2, 1.5)
+	var mage_ok: bool = mage_drop and wood3 > wood2
+	lines.append("mage bone drop=%s wood %d->%d" % ["Y" if mage_drop else "N", wood2, wood3])
+	print("WILDS mage drop=", mage_drop, " wood=", wood2, "->", wood3)
+
+	if flash_label:
+		flash_label.visible = false
+		flash_t = 0.0
+	if chest and is_instance_valid(chest) and player:
+		_loop_warp(chest.global_position + Vector3(-1.55, 0.0, 1.35), Vector3(0.72, 0.0, -0.48))
+	await get_tree().create_timer(0.16).timeout
+	_refresh_hud()
+	var hint_s: String = hint_label.text if hint_label else ""
+	var hint_ok: bool = hint_s.find("开箱") >= 0
+	_frame_chest_cam()
+	await get_tree().create_timer(0.22).timeout
+	await _save_shot("/workspace/shot-chest-hint.png")
+	_try_chest()
+	var opened: bool = chest != null and is_instance_valid(chest) and chest.opened
+	lines.append("chest kaykit hint=%s opened=%s" % [hint_s, "Y" if opened else "N"])
+	print("WILDS chest hint=", hint_s, " opened=", opened)
+
+	var gaps: Array = []
+	if not drop_ok:
+		gaps.append("bone-drop")
+	if not first_ok:
+		gaps.append("first-wood")
+	if not flash_ok:
+		gaps.append("flash")
+	if not mage_ok:
+		gaps.append("mage-bone")
+	if not hint_ok:
+		gaps.append("chest-hint")
+	if not opened:
+		gaps.append("chest-open")
+	if gaps.is_empty():
+		lines.append("DoD: daytime forest reward — bright bone, 骨 +N, first +2, mage same, E 开箱.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/WILDS_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/WILDS_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("WILDS_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:

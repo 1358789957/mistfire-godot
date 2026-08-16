@@ -266,12 +266,14 @@ func _drop_bone() -> void:
 	var ps := load("res://scripts/pickup.gd")
 	if ps == null:
 		return
-	var drop: Node = ps.new()
 	var host: Node = get_parent()
 	if host == null:
 		return
+	var drop: Node3D = ps.new()
 	host.add_child(drop)
-	drop.setup(global_position + Vector3(0.15, 0.12, 0.1), "bone")
+	var pos: Vector3 = global_position + Vector3(0.18, 0.42, 0.12)
+	drop.setup(pos, "bone")
+	print("wild_drop bone kind=", skel_kind, " at ", Vector3(snappedf(pos.x, 0.1), snappedf(pos.y, 0.1), snappedf(pos.z, 0.1)))
 
 
 func _physics_process(delta: float) -> void:
