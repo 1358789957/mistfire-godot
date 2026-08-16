@@ -1,0 +1,9 @@
+Mistfire Sanctum DAYOBJ VERIFY
+==============================
+day1 start hint=还差 8 木点火 · 城寨未占
+late day1 wood=3 hint=还差 5 木点火 · 城寨未占
+lit hint=火种已燃 · 可建塔/祠 · 城寨未占 night=第1天  夜将至  60s
+smash hint=火种已燃 · 可建塔/祠 · 可重建骨祠 · 城寨未占
+dawn title=破晓 sub=第2天 · 火种还在 · 按 E 继续 hint=破晓  第2天  ·  按 E 继续 night=第2天  夜将至  60s
+day2 hint=火种已燃 · 可建塔/祠 · 可重建骨祠 · 城寨未占 night=第2天  夜将至  60s
+DoD: late day1 还差 N 木点火, lit 火种已燃, smash 可重建骨祠, keep 城寨未占, 夜将至, dawn 按 E 继续.
