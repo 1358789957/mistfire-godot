@@ -59,6 +59,9 @@ var wood := 0
 var night_t := 0.0
 var wave_i := 0
 var wave_wait := 0.0
+var _wave_cleared := false
+var _altar_danger_flashed := false
+var _had_live_shrine := false
 var _night_lit := false
 var chest: Node3D
 var _monster_close := false
@@ -799,6 +802,11 @@ func _start_run(id: String) -> void:
 	GameState.wild_bone_today = false
 	wood = 0
 	night_t = 0.0
+	wave_i = 0
+	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 	post_light_t = -1.0
 	result_shown = false
 	dawn_t = -1.0
@@ -1023,6 +1031,11 @@ func _clear_run() -> void:
 	GameState.wild_bone_today = false
 	tribute_t = 0.0
 	dawn_t = -1.0
+	wave_i = 0
+	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 
 
 func _set_day_look() -> void:
@@ -1077,13 +1090,15 @@ func _begin_night() -> void:
 	post_light_t = -1.0
 	wave_i = 0
 	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = _shrine_count() > 0
 	_night_lit = altar != null and altar.lit
 	_set_night_look()
 	_spawn_wave(0)
 	_ensure_puppet_golem()
 	if player and is_instance_valid(player):
 		player.arm_core_save()
-	Sfx.play("night")
 	_refresh_hud()
 
 
@@ -1098,12 +1113,63 @@ func _night_living() -> int:
 	return n
 
 
+func _wave_side_label(count: int, pool: Array) -> String:
+	var woods := false
+	var shore := false
+	for i in count:
+		var spot: Vector3 = pool[i % pool.size()]
+		if float(spot.x) >= 0.0:
+			woods = true
+		else:
+			shore = true
+	if woods and shore:
+		return "林与岸"
+	if shore:
+		return "岸"
+	return "林"
+
+
+func _announce_wave(idx: int, side: String) -> void:
+	var n: int = idx + 1
+	var text := "第%d波 · %s" % [n, side]
+	_flash_hud(text, Color(0.78, 0.88, 1.0), 1.55)
+	Sfx.play("night")
+	print("wave_start n=", n, " side=", side)
+
+
+func _note_wave_clear() -> void:
+	if _wave_cleared:
+		return
+	_wave_cleared = true
+	_flash_hud("波次清空", Color(0.98, 0.86, 0.52), 1.40)
+	Sfx.play("confirm")
+	print("wave_clear i=", wave_i)
+
+
+func _tick_siege_alerts() -> void:
+	if GameState.phase != GameState.Phase.NIGHT:
+		return
+	if altar and altar.lit and int(altar.hp) == 1 and not _altar_danger_flashed:
+		_altar_danger_flashed = true
+		_flash_hud("祭坛危", Color(1.0, 0.38, 0.32), 1.70)
+		Sfx.play("error")
+	var sn: int = _shrine_count()
+	if _had_live_shrine and sn <= 0:
+		_had_live_shrine = false
+		_flash_hud("骨祠破", Color(0.95, 0.62, 0.36), 1.55)
+		Sfx.play("error")
+	elif sn > 0:
+		_had_live_shrine = true
+
+
 func _spawn_wave(idx: int) -> void:
+	_wave_cleared = false
+	wave_wait = 0.0
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e.is_in_group("guards") or e.is_in_group("wilds"):
 			continue
 		e.queue_free()
-	var pool := [
+	var pool: Array = [
 		Vector3(32.0, Island.height_at(32.0, 2.2) + 0.9, 2.2),
 		Vector3(40.0, Island.height_at(40.0, 16.0) + 0.9, 16.0),
 		Vector3(36.0, Island.height_at(36.0, 8.0) + 0.9, 8.0),
@@ -1114,7 +1180,8 @@ func _spawn_wave(idx: int) -> void:
 	var waves: Array = _wave_counts()
 	var last: int = waves.size() - 1
 	var count: int = int(waves[clampi(idx, 0, last)])
-	var kinds := ["warrior", "rogue", "mage", "minion"]
+	var side: String = _wave_side_label(count, pool)
+	var kinds: Array = ["warrior", "rogue", "mage", "minion"]
 	var es := load("res://scripts/enemy.gd")
 	for i in count:
 		var spot: Vector3 = pool[i % pool.size()]
@@ -1126,6 +1193,7 @@ func _spawn_wave(idx: int) -> void:
 		if GameState.day_index >= 2:
 			en.speed = float(en.speed) * NIGHT_SPEED_BUMP
 		print("night_wave[", idx, "] n=", i, " kind=", en.skel_kind, " at ", spot)
+	_announce_wave(idx, side)
 
 
 func _spawn_enemies() -> void:
@@ -1193,6 +1261,9 @@ func _begin_dawn() -> void:
 	night_t = 0.0
 	wave_i = 0
 	wave_wait = 0.0
+	_wave_cleared = false
+	_altar_danger_flashed = false
+	_had_live_shrine = false
 	post_light_t = -1.0
 	if ghost and is_instance_valid(ghost):
 		ghost.visible = false
@@ -1282,7 +1353,11 @@ func _refresh_hud() -> void:
 	var day_s := "第%d天" % GameState.day_index
 	if GameState.phase == GameState.Phase.NIGHT:
 		var waves: Array = _wave_counts()
-		night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
+		var living_n: int = _night_living()
+		if living_n <= 0 and wave_i + 1 < waves.size():
+			night_label.text = "%s  夜 %d/%d波  下一波 %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, WAVE_GAP - wave_wait)]
+		else:
+			night_label.text = "%s  夜 %d/%d波  %.0fs" % [day_s, wave_i + 1, waves.size(), maxf(0.0, night_t)]
 	elif GameState.phase == GameState.Phase.DAWN:
 		night_label.text = day_s
 	elif post_light_t >= 0.0:
@@ -1798,9 +1873,11 @@ func _process(delta: float) -> void:
 			_show_result(false)
 			_refresh_hud()
 			return
-		var living := _night_living()
+		_tick_siege_alerts()
+		var living: int = _night_living()
 		if living <= 0:
 			var waves: Array = _wave_counts()
+			_note_wave_clear()
 			if wave_i + 1 < waves.size():
 				wave_wait += delta
 				if wave_wait >= WAVE_GAP:
@@ -1898,6 +1975,10 @@ func _maybe_shot() -> void:
 		return
 	if shot.to_lower() == "wilds":
 		await _run_wilds_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "night":
+		await _run_night_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2274,23 +2355,6 @@ func _maybe_shot() -> void:
 		camera.look_at(player.global_position + Vector3(1.4, 0.85, 0.2))
 		await get_tree().create_timer(1.6).timeout
 		await _save_shot("/workspace/mistfire-godot/shot-night-skel.png")
-		get_tree().quit()
-	elif shot == "night":
-		await get_tree().process_frame
-		GameState.character_id = "knight"
-		_start_run("power")
-		if player and is_instance_valid(player):
-			player.global_position = Vector3(18.5, 0.9, 2.4)
-			player.rotation.y = 1.15
-			player.facing = Vector3(1.0, 0.0, 0.0)
-		cam_yaw = -1.15
-		_begin_night()
-		print("VERIFY night forced Knight+力量")
-		await get_tree().create_timer(2.1).timeout
-		for e in get_tree().get_nodes_in_group("enemies"):
-			if is_instance_valid(e) and not e.is_in_group("guards"):
-				print("VERIFY enemy tag=", e.spawn_tag, " kind=", e.skel_kind, " pos=", e.global_position, " dest=altar")
-		await _save_shot("/workspace/mistfire-godot/shot-night.png")
 		get_tree().quit()
 	else:
 		title_orbit = false
@@ -3000,6 +3064,123 @@ func _frame_loot_cam(look_at: Vector3) -> void:
 	camera.fov = 32.0
 	camera.position = Vector3(1.25, 1.45, 2.35)
 	camera.look_at(look)
+
+
+func _run_night_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum NIGHT VERIFY")
+	lines.append("=============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	title_root.visible = false
+	play_hud.visible = true
+	if altar and not altar.lit:
+		altar.light_fire()
+	if player and is_instance_valid(player):
+		player.global_position = Vector3(18.5, 0.9, 2.4)
+		player.rotation.y = 1.15
+		player.facing = Vector3(1.0, 0.0, 0.0)
+		player.invuln = 60.0
+	cam_yaw = -1.15
+	_begin_night()
+	print("VERIFY night forced Knight+力量")
+	var wave1: String = flash_label.text if flash_label else ""
+	var hud1: String = night_label.text if night_label else ""
+	var living1: int = _night_living()
+	var wave1_ok: bool = wave1.find("第1波") >= 0 and wave1.find("林") >= 0
+	var hud1_ok: bool = hud1.find("夜") >= 0 and hud1.find("1/") >= 0
+	lines.append("wave1 flash=%s hud=%s living=%d" % [wave1, hud1, living1])
+	print("NIGHT wave1 flash=", wave1, " hud=", hud1, " living=", living1)
+
+	await get_tree().create_timer(1.35).timeout
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and not e.is_in_group("guards") and not e.is_in_group("wilds") and not e.is_in_group("dummies"):
+			print("VERIFY enemy tag=", e.spawn_tag, " kind=", e.skel_kind, " pos=", e.global_position, " dest=altar")
+	await _save_shot("/workspace/mistfire-godot/shot-night.png")
+	await _save_shot("/workspace/shot-night.png")
+
+	for e2 in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e2) or e2.is_in_group("guards") or e2.is_in_group("wilds") or e2.is_in_group("dummies"):
+			continue
+		e2.take_hit(400.0, Vector3.ZERO)
+	await get_tree().create_timer(0.14).timeout
+	var clear_s: String = flash_label.text if flash_label else ""
+	var gap_hud: String = night_label.text if night_label else ""
+	var clear_ok: bool = clear_s.find("波次清空") >= 0
+	var gap_ok: bool = gap_hud.find("下一波") >= 0
+	lines.append("clear flash=%s hud=%s wait=%.2f" % [clear_s, gap_hud, wave_wait])
+	print("NIGHT clear flash=", clear_s, " hud=", gap_hud, " wait=", wave_wait)
+
+	wave_wait = WAVE_GAP
+	await get_tree().create_timer(0.10).timeout
+	var wave2: String = flash_label.text if flash_label else ""
+	var hud2: String = night_label.text if night_label else ""
+	var living2: int = _night_living()
+	var wave2_ok: bool = wave2.find("第2波") >= 0 and wave2.find("林与岸") >= 0
+	var beat_ok: bool = living2 > 0 and wave_i == 1
+	lines.append("wave2 flash=%s hud=%s living=%d i=%d" % [wave2, hud2, living2, wave_i])
+	print("NIGHT wave2 flash=", wave2, " hud=", hud2, " living=", living2, " i=", wave_i)
+
+	if altar:
+		while int(altar.hp) > 1:
+			altar.smash()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var altar_s: String = flash_label.text if flash_label else ""
+	var altar_hp: int = int(altar.hp) if altar else -1
+	var altar_ok: bool = altar_s.find("祭坛危") >= 0 and altar_hp == 1
+	lines.append("altar hp=%d flash=%s" % [altar_hp, altar_s])
+	print("NIGHT altar hp=", altar_hp, " flash=", altar_s)
+
+	var sh: Node = _place_verify_shrine()
+	await get_tree().process_frame
+	if sh and is_instance_valid(sh):
+		while is_instance_valid(sh) and not bool(sh.get("broken")):
+			sh.smash()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var shrine_s: String = flash_label.text if flash_label else ""
+	var shrine_ok: bool = shrine_s.find("骨祠破") >= 0
+	lines.append("shrine flash=%s count=%d" % [shrine_s, _shrine_count()])
+	print("NIGHT shrine flash=", shrine_s, " count=", _shrine_count())
+
+	var gaps: Array = []
+	if not wave1_ok:
+		gaps.append("wave1-banner")
+	if not hud1_ok:
+		gaps.append("wave1-hud")
+	if living1 < 3:
+		gaps.append("wave1-mobs")
+	if not clear_ok:
+		gaps.append("clear-banner")
+	if not gap_ok:
+		gaps.append("gap-hud")
+	if not wave2_ok:
+		gaps.append("wave2-banner")
+	if not beat_ok:
+		gaps.append("wave2-beat")
+	if not altar_ok:
+		gaps.append("altar-danger")
+	if not shrine_ok:
+		gaps.append("shrine-break")
+	if gaps.is_empty():
+		lines.append("DoD: night siege banners — 第N波 + 林/岸, 波次清空 then 5s 下一波, 祭坛危, 骨祠破.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/NIGHT_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/NIGHT_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("NIGHT_VERIFY written\n", text)
 
 
 func _run_wilds_verify() -> void:
