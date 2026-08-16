@@ -10,6 +10,7 @@ var character_id := "knight"
 var survived := false
 var territory := 0
 var day_index := 1
+var wild_bone_today: bool = false
 
 # Bounding half-extent only (minimap scale / legacy). Walk/build use Island PIP.
 const ISLAND_R := 76.0

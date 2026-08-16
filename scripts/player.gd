@@ -9,6 +9,7 @@ signal chopped_tree
 signal attacked
 signal core_saved
 signal power_struck(killed: bool)
+signal loot_noted(text: String)
 
 const SPEED := 7.2
 const LIFE_MAX_HP := 120.0
@@ -271,6 +272,10 @@ func move_speed() -> float:
 func grant_wood(n: int = 1) -> void:
 	wood += n
 	wood_gained.emit()
+
+
+func note_loot(text: String) -> void:
+	loot_noted.emit(text)
 
 
 func _physics_process(delta: float) -> void:

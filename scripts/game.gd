@@ -796,6 +796,7 @@ func _start_run(id: String) -> void:
 	GameState.survived = false
 	GameState.territory = 0
 	GameState.day_index = 1
+	GameState.wild_bone_today = false
 	wood = 0
 	night_t = 0.0
 	post_light_t = -1.0
@@ -852,6 +853,7 @@ func _spawn_player() -> void:
 	player.wood_gained.connect(_on_wood)
 	player.core_saved.connect(_on_core_saved)
 	player.power_struck.connect(_on_power_struck)
+	player.loot_noted.connect(_on_loot_noted)
 	_ensure_puppet_golem()
 
 
@@ -870,9 +872,20 @@ func _try_chest() -> void:
 		return
 	if player == null:
 		return
-	var d := Vector3(chest.global_position.x - player.global_position.x, 0, chest.global_position.z - player.global_position.z).length()
-	if d < 2.4:
+	if _chest_dist() < 2.4:
 		chest.try_open()
+
+
+func _chest_dist() -> float:
+	if chest == null or not is_instance_valid(chest) or player == null:
+		return 999.0
+	return Vector3(chest.global_position.x - player.global_position.x, 0, chest.global_position.z - player.global_position.z).length()
+
+
+func _near_chest(dist: float = 3.4) -> bool:
+	if chest == null or not is_instance_valid(chest) or chest.opened:
+		return false
+	return _chest_dist() < dist
 
 
 func _spawn_wilds() -> void:
@@ -909,6 +922,10 @@ func _spawn_guards() -> void:
 func _on_wood() -> void:
 	wood = player.wood
 	_refresh_hud()
+
+
+func _on_loot_noted(text: String) -> void:
+	_flash_hud(text, Color(0.98, 0.88, 0.48), 0.90)
 
 
 func _on_player_died() -> void:
@@ -1003,6 +1020,7 @@ func _clear_run() -> void:
 	wood = 0
 	GameState.territory = 0
 	GameState.day_index = 1
+	GameState.wild_bone_today = false
 	tribute_t = 0.0
 	dawn_t = -1.0
 
@@ -1180,6 +1198,8 @@ func _begin_dawn() -> void:
 		ghost.visible = false
 	_clear_night_mobs()
 	_set_day_look()
+	GameState.wild_bone_today = false
+	_spawn_wilds()
 	# Same island: do not reset trees, towers, shrine, keep, chest, wood, rune.
 	if altar and altar.lit:
 		if camp and camp.occupied:
@@ -1283,6 +1303,8 @@ func _hint_text() -> String:
 		if GameState.rune_id == "precise":
 			return "建造火塔  F放置(%d木双焰)  R旋转  B切骨祠" % cost
 		return "建造火塔  F放置(%d木)  R旋转  B切骨祠" % cost
+	if GameState.phase == GameState.Phase.DAY and _near_chest():
+		return "E 开箱"
 	match GameState.phase:
 		GameState.Phase.DAY:
 			if player and player.wood < WOOD_NEED and (altar == null or not altar.lit):
@@ -1679,7 +1701,7 @@ func _process(delta: float) -> void:
 		camera.position = Vector3(1.35, 2.05, 4.4)
 		camera.look_at(player.global_position + Vector3(1.55, 0.88, 0.2))
 		return
-	if OS.get_environment("MISTFIRE_SHOT") == "wilds" and player and is_instance_valid(player):
+	if OS.get_environment("MISTFIRE_SHOT").to_lower() == "wilds" and _shot_focus == "glade" and player and is_instance_valid(player):
 		cam_pivot.global_position = player.global_position
 		cam_pivot.rotation.y = 0.0
 		camera.fov = 34.0
@@ -1872,6 +1894,10 @@ func _maybe_shot() -> void:
 		return
 	if shot.to_lower() == "precise":
 		await _run_precise_verify()
+		get_tree().quit()
+		return
+	if shot.to_lower() == "wilds":
+		await _run_wilds_verify()
 		get_tree().quit()
 		return
 	if shot == "charsel":
@@ -2934,6 +2960,141 @@ func _run_precise_verify() -> void:
 		out.store_string(text)
 		out.close()
 	print("PRECISE_VERIFY written\n", text)
+
+
+func _wait_pickup(p_kind: String, timeout: float) -> Node3D:
+	var left: float = timeout
+	while left > 0.0:
+		await get_tree().create_timer(0.05).timeout
+		left -= 0.05
+		for n in get_tree().get_nodes_in_group("pickups"):
+			if is_instance_valid(n) and str(n.kind) == p_kind:
+				return n
+	return null
+
+
+func _wait_wood_gt(prev: int, timeout: float) -> int:
+	var left: float = timeout
+	while left > 0.0:
+		await get_tree().create_timer(0.05).timeout
+		left -= 0.05
+		if player and is_instance_valid(player) and player.wood > prev:
+			return player.wood
+	return player.wood if player else prev
+
+
+func _frame_loot_cam(look_at: Vector3) -> void:
+	var look := look_at + Vector3(0.0, 0.42, 0.0)
+	cam_pivot.global_position = look
+	cam_pivot.rotation.y = 0.0
+	camera.fov = 32.0
+	camera.position = Vector3(1.25, 1.45, 2.35)
+	camera.look_at(look)
+
+
+func _run_wilds_verify() -> void:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("Mistfire Sanctum WILDS VERIFY")
+	lines.append("=============================")
+	await get_tree().process_frame
+	GameState.character_id = "knight"
+	_start_run("power")
+	_shot_focus = "loot"
+	title_root.visible = false
+	play_hud.visible = true
+	await get_tree().create_timer(0.18).timeout
+
+	var warrior: Node = null
+	var mage: Node = null
+	var rogue: Node = null
+	for e in get_tree().get_nodes_in_group("wilds"):
+		if not is_instance_valid(e):
+			continue
+		if e.skel_kind == "warrior":
+			warrior = e
+		elif e.skel_kind == "mage":
+			mage = e
+		elif e.skel_kind == "rogue":
+			rogue = e
+	lines.append("wilds warrior=%s mage=%s rogue=%s" % [
+		"Y" if warrior else "N", "Y" if mage else "N", "Y" if rogue else "N"])
+	print("WILDS kinds warrior=", warrior != null, " mage=", mage != null, " rogue=", rogue != null)
+
+	var wood0: int = player.wood if player else -1
+	if warrior and is_instance_valid(warrior):
+		warrior.take_hit(200.0, Vector3.ZERO)
+	var bone: Node3D = await _wait_pickup("bone", 1.8)
+	var drop_ok: bool = bone != null
+	if bone:
+		_frame_loot_cam(bone.global_position)
+		await get_tree().create_timer(0.28).timeout
+		await _save_shot("/workspace/shot-wild-bone.png")
+		if player:
+			_loop_warp(bone.global_position + Vector3(0.15, 0.0, 0.15))
+	var wood1: int = await _wait_wood_gt(wood0, 1.5)
+	var flash_s: String = flash_label.text if flash_label else ""
+	var first_ok: bool = wood1 >= wood0 + 2
+	var flash_ok: bool = flash_s.find("骨") >= 0
+	lines.append("first bone drop=%s wood %d->%d flash=%s" % [
+		"Y" if drop_ok else "N", wood0, wood1, flash_s])
+	print("WILDS first drop=", drop_ok, " wood=", wood0, "->", wood1, " flash=", flash_s)
+
+	var wood2: int = wood1
+	if mage and is_instance_valid(mage):
+		mage.take_hit(200.0, Vector3.ZERO)
+	var bone2: Node3D = await _wait_pickup("bone", 1.8)
+	var mage_drop: bool = bone2 != null
+	if bone2 and player:
+		_loop_warp(bone2.global_position + Vector3(0.12, 0.0, 0.12))
+	var wood3: int = await _wait_wood_gt(wood2, 1.5)
+	var mage_ok: bool = mage_drop and wood3 > wood2
+	lines.append("mage bone drop=%s wood %d->%d" % ["Y" if mage_drop else "N", wood2, wood3])
+	print("WILDS mage drop=", mage_drop, " wood=", wood2, "->", wood3)
+
+	if chest and is_instance_valid(chest) and player:
+		_loop_warp(chest.global_position + Vector3(-1.55, 0.0, 1.35), Vector3(0.72, 0.0, -0.48))
+	await get_tree().create_timer(0.16).timeout
+	_refresh_hud()
+	var hint_s: String = hint_label.text if hint_label else ""
+	var hint_ok: bool = hint_s.find("开箱") >= 0
+	_try_chest()
+	var opened: bool = chest != null and is_instance_valid(chest) and chest.opened
+	_frame_chest_cam()
+	await get_tree().create_timer(0.22).timeout
+	await _save_shot("/workspace/shot-chest-hint.png")
+	lines.append("chest kaykit hint=%s opened=%s" % [hint_s, "Y" if opened else "N"])
+	print("WILDS chest hint=", hint_s, " opened=", opened)
+
+	var gaps: Array = []
+	if not drop_ok:
+		gaps.append("bone-drop")
+	if not first_ok:
+		gaps.append("first-wood")
+	if not flash_ok:
+		gaps.append("flash")
+	if not mage_ok:
+		gaps.append("mage-bone")
+	if not hint_ok:
+		gaps.append("chest-hint")
+	if not opened:
+		gaps.append("chest-open")
+	if gaps.is_empty():
+		lines.append("DoD: daytime forest reward — bright bone, 骨 +N, first +2, mage same, E 开箱.")
+	else:
+		var gap_s: String = ""
+		for i in gaps.size():
+			if i > 0:
+				gap_s += ", "
+			gap_s += str(gaps[i])
+		lines.append("DoD GAPS: " + gap_s)
+	var text := "\n".join(lines) + "\n"
+	var out := FileAccess.open("/workspace/mistfire-godot/WILDS_VERIFY.txt", FileAccess.WRITE)
+	if out == null:
+		out = FileAccess.open("/workspace/WILDS_VERIFY.txt", FileAccess.WRITE)
+	if out:
+		out.store_string(text)
+		out.close()
+	print("WILDS_VERIFY written\n", text)
 
 
 func _build_charsel_ui() -> void:
