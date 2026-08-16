@@ -2410,18 +2410,18 @@ func _run_life_verify() -> void:
 	await get_tree().create_timer(0.18).timeout
 	_atk_clear_mobs()
 	var hud_s: String = rune_label.text if rune_label else ""
-	var max_ok := player != null and player.max_hp >= 119.0
-	var hud_ok := hud_s.find("厚血") >= 0 and hud_s.find("核心") >= 0
-	lines.append("day max_hp=%.0f hud=%s" % [player.max_hp if player else -1.0, hud_s])
+	var max_ok: bool = player != null and float(player.max_hp) >= 119.0
+	var hud_ok: bool = hud_s.find("厚血") >= 0 and hud_s.find("核心") >= 0
+	lines.append("day max_hp=%.0f hud=%s" % [float(player.max_hp) if player else -1.0, hud_s])
 	print("LIFE spawn max_hp=", player.max_hp if player else -1, " hud=", hud_s)
 
-	var hp0 := player.hp
+	var hp0: float = float(player.hp)
 	player.invuln = 0.0
 	player.take_hit(20.0)
-	var hp1 := player.hp
-	var absorbed := hp0 - hp1
-	var pulse_ok := player.last_hurt_pulse and player.heal_pulse_t > 0.0
-	var dr_ok := absorbed > 0.4 and absorbed < 19.2
+	var hp1: float = float(player.hp)
+	var absorbed: float = hp0 - hp1
+	var pulse_ok: bool = bool(player.last_hurt_pulse) and float(player.heal_pulse_t) > 0.0
+	var dr_ok: bool = absorbed > 0.4 and absorbed < 19.2
 	lines.append("hurt pulse=%s hp %.0f->%.0f absorbed=%.1f (want <20)" % [
 		"Y" if pulse_ok else "N", hp0, hp1, absorbed])
 	print("LIFE hurt pulse=", pulse_ok, " hp=", hp0, "->", hp1, " absorbed=", absorbed)
@@ -2433,15 +2433,15 @@ func _run_life_verify() -> void:
 	player.combat_t = 0.0
 	player.invuln = 2.0
 	await get_tree().create_timer(1.15).timeout
-	var net_ok := player.near_life_net and player.hp > 70.4
+	var net_ok: bool = bool(player.near_life_net) and float(player.hp) > 70.4
 	lines.append("altar net=%s hp %.1f (from 70, combat_t=%.1f)" % [
-		"Y" if net_ok else "N", player.hp, player.combat_t])
+		"Y" if net_ok else "N", float(player.hp), float(player.combat_t)])
 	print("LIFE net=", player.near_life_net, " hp=", player.hp)
 
 	player.invuln = 0.0
 	player.hp = 6.0
 	player.take_hit(80.0)
-	var day_die := player.hp <= 0.0 and not player.last_core_save
+	var day_die: bool = float(player.hp) <= 0.0 and not bool(player.last_core_save)
 	var day_flash := flash_label.text if flash_label and flash_label.visible else ""
 	lines.append("day lethal die=%s save=%s flash=%s" % [
 		"Y" if day_die else "N", "Y" if player.last_core_save else "N", day_flash])
@@ -2454,17 +2454,17 @@ func _run_life_verify() -> void:
 	await get_tree().process_frame
 	_refresh_hud()
 	var night_hint: String = hint_label.text if hint_label else ""
-	var hint_ok := night_hint.find("核心") >= 0
+	var hint_ok: bool = night_hint.find("核心") >= 0
 	_loop_warp(Vector3(8.2, 0.9, 8.0), Vector3(0, 0, 1))
 	player.invuln = 0.0
 	player.hp = 8.0
 	player.last_core_save = false
 	player.take_hit(80.0)
-	var saved := player.last_core_save and player.hp >= 11.0 and player.hp < 20.0
+	var saved: bool = bool(player.last_core_save) and float(player.hp) >= 11.0 and float(player.hp) < 20.0
 	var flash_s: String = flash_label.text if flash_label else ""
-	var flash_ok := flash_s.find("核心还在") >= 0 and flash_label.visible
+	var flash_ok: bool = flash_s.find("核心还在") >= 0 and flash_label.visible
 	lines.append("night save=%s hp=%.0f hint=%s flash=%s" % [
-		"Y" if saved else "N", player.hp, night_hint, flash_s])
+		"Y" if saved else "N", float(player.hp), night_hint, flash_s])
 	print("LIFE night save=", saved, " hp=", player.hp, " flash=", flash_s, " hint=", night_hint)
 	await get_tree().create_timer(0.35).timeout
 	await _save_shot("/workspace/shot-life-core.png")
@@ -2472,9 +2472,9 @@ func _run_life_verify() -> void:
 	await get_tree().create_timer(1.25).timeout
 	player.invuln = 0.0
 	player.take_hit(80.0)
-	var second_die := player.hp <= 0.0
+	var second_die: bool = float(player.hp) <= 0.0
 	lines.append("second lethal die=%s hp=%.0f phase=%s" % [
-		"Y" if second_die else "N", player.hp, str(GameState.phase)])
+		"Y" if second_die else "N", float(player.hp), str(GameState.phase)])
 	print("LIFE second die=", second_die, " hp=", player.hp, " phase=", GameState.phase)
 
 	var gaps: Array = []
