@@ -1,0 +1,43 @@
+Mistfire Sanctum MAP continue — VERIFY
+=====================================
+Run: Knight + 力量, N forces night. 2026-08-16 (CST).
+
+1. Wayfinding
+   Signs (Label3D + wooden posts + Kenney banners), inward-facing at the altar:
+     南  村子/城寨   @ (3.55, -7.15)
+     东  伐木林       @ (7.15,  3.55)
+     西  码头         @ (-7.15, 3.55)
+     北  废墟         @ (3.55,  7.15)
+   Extra Kenney color: banner-red south, banner-green east, castle flag north.
+   Minimap: YES. Top-right Control/_draw disc, dirt roads as brown lines,
+   icons 祭/村/寨/林/码/墟 + player triangle. Updates every frame from player group.
+
+2. North zone 废墟/哨所
+   Center (0, 30). Road extended on 2m grid iz=1..14 plus courtyard iz=13..16.
+   Broken Kenney castle curtain + roofless tower @ cell(2,17)≈(5, 35),
+   3 ruined cottages (walls + fallen roofs), campfire, crates, banners, logs.
+   Landmark only — NOT a second capturable 城寨 (capture code is camp-specific).
+
+3. Night loop (live run)
+   Press N / _begin_night still works. Enemies: KayKit Rogue_Hooded tinted
+   purple (not capsules). Guards: KayKit Knight.
+   Spawns (woods AND shore) then walked toward altar:
+
+     woods  spawn (32.0, 0.9, 2.2)  -> (25.72, -0.02,  1.80)
+     woods  spawn (40.0, 0.9, 16.0) -> (34.15, -0.02, 13.66)
+     shore  spawn (-44.0, 0.9, 2.0) -> (-37.71, -0.02,  1.71)
+     shore  spawn (-42.0, 0.9, -3.2)-> (-35.72, -0.02, -2.72)
+
+   shot-night.png: Knight+力量, 入夜 ~18s, hooded enemy with red eyes on the
+   east road inbound. Minimap still visible.
+
+Untouched: KayKit charsel + player, 4 runes, 20 choppable trees, altar,
+towers B/F/R, 城寨 E, golem, village 2m grid (8 houses), Quaternius trees,
+ground textures.
+
+Assumptions
+- North destination named 废墟 (outpost/ruins), not a second keep.
+- Minimap north = world +Z. Player icon faces KayKit +Z yaw.
+- Night enemies path straight at the altar (defend line), not navmesh-along-road.
+- Shore spawns sit on the west road so they do not lodge in pier props.
+- No new paid packs; KayKit Rogue_Hooded / Knight already on disk.

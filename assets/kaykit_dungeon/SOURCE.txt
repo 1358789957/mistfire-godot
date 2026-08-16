@@ -1,0 +1,4 @@
+KayKit Dungeon Remastered 1.0 FREE only
+https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0
+License: CC0. Extra/Source tiers not downloaded.
+Selected: chest, chest_gold, barrels, crates, torches, red banners.

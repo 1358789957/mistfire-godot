@@ -1,0 +1,58 @@
+Mistfire Sanctum — fine grass cards
+===================================
+2026-08-16 13:53 CST. Replaced Kenney Nature grass_large.glb (3 fat plates,
+~0.57 m, 162 MultiMesh) with alpha-cut foliage cards.
+
+Source pack
+-----------
+Kenney Foliage Sprites (CC0) — https://kenney.nl/assets/foliage-sprites
+  OpenGameArt mirror downloaded (Quaternius Ultimate Nature zip 404'd).
+  Shaded sprites recolored to meadow greens, cropped, 256 RGBA:
+    grass_tuft_a.png  ← sprite_0068   ~12 thin pointed blades
+    grass_tuft_b.png  ← sprite_0069   ~18 thin pointed blades
+    grass_tuft_c.png  ← sprite_0066    ~7 thin vertical blades
+  assets/kenney_foliage/  (+ License.txt)
+
+Tuft mesh
+---------
+Island.grass_card_mesh() — 4 crossed quads (star, 0 / 45 / 90 / 135°)
+  native size   0.28 m wide × 0.34 m tall
+  scale jitter  0.78–1.16  →  ~0.27–0.39 m  (ankle / mid-shin vs KayKit 1.75 m)
+  blades/tuft   4 cards × 7–18 silhouettes  (not 3 solid plates)
+  material      Mats.grass_card()
+                albedo PNG + slight tint, alpha_scissor=0.40,
+                cull_disabled, metallic=0, no teal
+
+Instances (seeded RNG 20260816)
+-------------------------------
+IslandGrassTufts   295   card A
+IslandGrassTuftsB  191   card B
+IslandGrassTuftsC   74   card C
+total              560   MultiMesh   (band 400–700, llvmpipe-safe)
+
+Bushes 27 (18+9) and flowers 8 unchanged (Kenney Nature glb).
+
+Placement
+---------
+Dense spawn meadow + look-at cluster at (9.2, 7.0) for shot-grass.
+Path shoulders both sides of village.road_points (extra every other cell).
+6 m jittered island grid, woods ring (34,20), lot backs, coast inward of sand.
+Fill to 560. Yaw TAU. Y = Island.height_at. No collision.
+
+Skip (same as before)
+---------------------
+- not Island.contains_v(pos, 2.15)   water + sand ribbon
+- altar dirt disc                    r < 7.35
+- dirt roads                         village.on_road
+- village / keep / house blockers    village.blocks pad 1.15
+- keep courtyard                     x(-6.8, 4.8) z(-45.0, -33.5)
+- pier boards                        x(-54.5, -46.5) z(1.0, 16.5)
+
+Verify
+------
+shot-grass.png  close at knight feet (7.5, 8.2): many thin alpha-cut blades,
+                ankle / shin, not 3 fat Kenney plates.
+shot-map.png    irregular coast still reads; 560 small tufts are not a
+                green fur ball from the overview cam.
+
+DoD: close-up looks like grass, not low-poly lettuce.

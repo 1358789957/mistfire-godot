@@ -1,0 +1,12 @@
+Wild / night enemies use KayKit Skeletons (CC0).
+
+Day wilds (east glade + trail): warrior, rogue, minion, mage.
+Night wave still walks in from woods / shore (same 4 kinds).
+Keep guards stay KayKit Knight.
+
+Kits:
+  warrior  blade + small shield   chop melee
+  rogue    crossbow               bolt
+  mage     staff                  orb
+  minion   axe                    wide chop
+Death plays Death_C_Skeletons then frees. Wilds drop 1 wood.

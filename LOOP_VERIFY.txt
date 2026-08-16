@@ -1,0 +1,39 @@
+Mistfire Sanctum LOOP VERIFY
+============================
+Run: Knight + 力量. 2026-08-16 11:50 CST. Live Godot 4.7 drive (MISTFIRE_SHOT=loop).
+
+Results
+- wood after chop: 8  (23 east-woods trees standing; live Space chop path)
+- altar lit: Y        (E at the plinth; flame stayed; HUD 夜将至 60s, not 火种未燃)
+- towers placed: 1    at (0.4, -10.0) on the south village road  火塔 1/3
+- camp occupied: Y    领地 1/1, 3 guards dead, banner near, occupy stuck
+- night result: WIN   4 enemies (2 woods + 2 shore) all pathing, all took damage
+                      woods (26.9,1.8) hp 43; woods (35.2,14.1) hp 43
+                      shore (-38.9,1.8) hp 43; shore (-36.9,-2.8) hp 43
+                      player_hp 80, altar still lit, timer ended 你守住了今晚
+
+What worked
+- Chop in the east woods granted wood through the live chop path (HUD 1/8 mid-chop, 8/8 at the altar).
+- Altar E lighting stuck (glowing bowl + 夜将至). Night hint is 守夜 / 火塔/火种灼烧雾影, not 火种未燃.
+- One 火塔 placed on the village road (B then F, snap accepted).
+- 城寨 occupy stuck (white banner, 领地 1/1). After occupy the HUD offers 入夜 按 N 或等待.
+- Night units spawned from woods AND shore, walked toward the altar, took player/tower/fire hits.
+- Night ended in a win after the 20s timer.
+
+What I fixed (hidden blockers)
+- Lighting used to start night in 8s — impossible to 建塔 + walk to 城寨 + kill guards + E after 点火.
+  Now: light starts a 60s grace; occupy while lit compresses to 10s; N still forces night.
+- Chop range 2.35->3.05, rate 0.72->1.05, tree work 1.0->0.85; 5 extra entrance trees on the east road
+  (nudge off the dirt instead of skipping) so 伐木林 is actually at the sign.
+- Altar E radius 3.1->4.8; E also lights during night (no 火种未燃 softlock if someone hits N early).
+- Tower placement snaps up to 4.8m; village block pad 2.2->1.35 so the village road accepts a 火塔.
+- Occupy radius 2.7->4.8 plus camp-center 5.4; guards spawn in the open courtyard at 34 hp.
+- Night enemies slide around trunks/props; contact 14->10 so a lit altar + tower is survivable.
+
+Shots
+- shot-loop-woods.png  Knight chopping in 东/伐木林, 木材 1/8, chop bar, HUD loop line
+- shot-loop-fire.png   altar flame on, 木材 8, 夜将至 60s
+- shot-loop-camp.png   keep + occupied banner, 领地 1/1, 夜将至 10s
+- shot-loop-night.png  入夜 18s, hooded red-eye inbound on the east road, 守夜 hint
+
+DoD: a player following 砍树 -> 点火/建塔 -> 占城寨 -> 守夜 can finish one night. No hidden blocker.

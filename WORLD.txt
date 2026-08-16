@@ -1,0 +1,56 @@
+Mistfire Sanctum — world pass (water / height / roads)
+======================================================
+2026-08-16 14:43 CST. After the jungle pass: real ocean, height on
+ruins + dock, continuous dirt roads. Village / altar / keep stay y=0.
+KayKit, attacks, runes, irregular coast, gameplay loop unchanged.
+
+1. Water
+--------
+assets/ground/water.png  512×512 RGB  ~64 KB  project-authored seamless
+Deep blue-green, wraparound fine ripples. No grid, no thick bars.
+Ocean is one ArrayMesh quad (half=430 m, y=-0.62) with world UV xz/16.
+Mats.water(): per-pixel, linear filter, opaque (gl_compatibility).
+Foam ribbon still follows the coast. Old 16×16 tiled prototype is gone.
+
+WATER_DRAW ArrayMesh uv_world=16 tex=water.png 512 filter=linear
+
+2. Terrain on other zones
+-------------------------
+Island.height_at / foot_y / snap_feet cover the whole island.
+snap_feet pins KayKit soles to foot_y on ANY raised terrain (ruins hill, shore dunes, jungle); village/altar/keep stay y=0.
+Height grid + ConcavePolygonShape3D rebuilt (8670 faces, backface=1).
+Logged range h=[-0.16, 4.05]. Flat mask still zeros town.
+
+  北 废墟   rocky rise, peak height_at(0,30)=3.13 m (knobs to ~3.5)
+            dirt "IslandRuinsHill" 176 tris, 20×24 m
+            north road ramps from the altar (z=10, y=0) → hill
+            outpost buildings / campfire / props sit on height_at
+            knight verify: (0.6, 27.8) y=2.86  height_at=2.77  foot_y=2.86
+  西 码头   gentle spit dunes ~0.3–1.1 m inland of the beach
+            pier boards flattened (x -55..-46, z 1..17) stay at water
+            village lobe x>-24 stays y=0 — not dunked
+  溪        thin jungle_dirt + water ribbon from hollow (94,12)
+            toward the SE bay (134,-16). Visual + 0.38 m channel.
+  伐木林    unchanged rolling 0.1–4.05 m, trail valley, ridge
+  村子/祭坛/城寨  still y≈0  (buildings sit)
+
+3. Roads
+--------
+2 m cell PLAN kept (houses aligned). Fill is one dirt ArrayMesh
+("VillageRoads") with world UV xz/4.5 — no per-tile BoxMesh slabs.
+Cells overlap 4 cm so edges do not hairline. Road follows height_at
+so the north road climbs the ruins hill. Altar dirt disc uses the
+same dirt material + UV 4.5.
+
+ROAD_DRAW ArrayMesh tris=512 cells=256 uv=xz/4.5 tex=dirt
+
+Verify
+------
+shot-map.png    irregular island, teal sea (no prototype grid),
+                jungle lobe + ruins hill + west spit readable
+shot-water.png  close west coast: sand, foam, water (not a blue grid)
+shot-ruins.png  intact outpost on the rise, knight full body on the dirt
+shot-road.png   village/altar dirt without chocolate-bar slabs
+
+DoD: overview is not a blue-grid ocean; ruins + dock have height;
+roads are a continuous dirt strip.

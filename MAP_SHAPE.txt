@@ -1,0 +1,54 @@
+Mistfire Sanctum — island shape
+================================
+2026-08-16 CST. Replaced the r≈63 green disc + sand ring with a triangulated
+irregular polygon. Ocean is a large plane under the land. No circular island
+cap. No circular sand ring.
+
+Polygon (x, z) clockwise from the northern rocky tip (44 verts)
+--------------------------------------------------------------
+(4,58) (16,52) (24,44) (28,36)
+(36,46) (48,44) (58,38) (64,28)     E woods bulge
+(66,16) (62,6) (54,-2) (48,-8)
+(44,-14) (40,-12) (36,-16) (30,-22)  SE notch
+(26,-32) (20,-44) (12,-54) (2,-60)   S village lobe / 城寨 tip
+(-10,-58) (-18,-50) (-22,-42) (-20,-36)
+(-26,-34) (-16,-28) (-18,-22) (-28,-20)   SW inlet (bites IN toward the hamlet)
+(-38,-14) (-50,-10) (-60,-6) (-70,-1)
+(-74,4) (-70,10) (-60,14) (-50,14)        W peninsula / 码头
+(-42,16) (-34,20) (-26,10) (-22,8)        NW harbor cove (bites IN north of the spit)
+(-18,16) (-16,26) (-12,38) (-6,50)        N headland back to the tip
+
+Silhouette: pointed N headland, kidney E woods, fat S lobe, long W spit.
+SW bay and NW cove wiggle the coast. Bounding box ≈ x[-74,66] z[-60,58].
+Not a circle (coast radius std ≈ 13 on a mean of 50) and not a square.
+
+Zones (unchanged grid, still on land)
+-------------------------------------
+祭坛 / altar     (0, 0)      center saddle, 4-way dirt cross
+村子 / village   (0, -22)    southern lobe, Kenney 2 m grid hamlet
+城寨 / keep      (-2, -40)   south tip of the lobe, E to occupy
+伐木林 / woods   (34, 20)    eastern bulge / inland vale
+码头 / dock      (-50, 2)    western peninsula; pier NNW into the harbor
+废墟 / ruins     (0, 30)     northern rocky headland
+Signs at the altar still read 南村子/城寨 东伐木林 西码头 北废墟.
+
+Clamp / towers
+--------------
+Player + tower placement use point-in-polygon (ray cast) plus distance-to-coast.
+Island.contains_xz / Island.contains_v / Island.clamp_xz.
+If outside or within 1.25 m of the water, snap to the nearest coast point then
+step inward along the edge normal (fallback: binary search toward the altar).
+NOT a circle radius.
+
+Mesh
+----
+Land is a MultiMesh of ~4 m grass/sand boxes clipped to the polygon
+(431 grass + 82 sand) plus 114 dirt cliff boxes along the coast. Runtime
+ArrayMesh was invisible on llvmpipe+gl_compatibility, so tiles match the
+road path that already renders. Cheap height: woods tiles sit a bit higher,
+beach at 0.02, village 0. Foam strip follows the true polygon.
+Walk collider stays a flat box; roads stay walkable. Player clamp is PIP.
+
+Minimap
+-------
+Fills the triangulated polygon (not a green disc), sand polyline, roads, icons.

@@ -1,0 +1,65 @@
+Mistfire Sanctum — eastern forest (designed)
+===========================================
+2026-08-16 15:50 CST. Replaced the east-lobe random scatter with a
+composed forest: 林缘 / 密林 / 空地 / 山脊 / 谷地 / 路. Village, altar,
+keep, water, roads, KayKit, attacks, runes, choppable wood loop stay.
+
+Zones (xz, Y = Island.height_at — not flattened)
+------------------------------------------------
+林缘  edge      x 20–54, z -2–42   toward the altar/meadow
+                spaced oak + birch (~6 m apart). Litter floor
+                (jungle_litter) over ~8–12 m, then dark jungle_floor.
+                Brighter grass cards. You can see into the trees.
+
+密林  dense     interior east of x≈54, off ridge/hollow/clearing
+                pine + oak in clumps of 3–5 (authored offsets, not a
+                grid, not Poisson). Walk corridors between clumps.
+                Darker floor. Grass/bushes denser here only.
+
+空地  clearing  oval at (108, 28)  rx=11  rz=8
+                dirt trail crosses E–W. Landmark: Kenney stone circle
+                + pillar at (108, 31.2) and a unique oak_d (scale 2.18)
+                at (112.6, 33.8). Stumps/logs in the south half.
+                ~20 choppables on the rim, path kept open.
+                This is where you chop wood.
+
+山脊  ridge     polyline (48,42)→(82,52)→(120,56)→(158,46)  ~4 m
+                mostly pines, rock line, little undergrowth.
+
+谷地/溪 hollow  (96, 10) r≈14 + creek ribbon → SE bay (134,-16)
+                birch, extra moss overlay, creek water kept.
+
+路    trail     meadow east road (32,16) → 林缘 (42,18)(54,20)
+                → 密林 corridor (66,24)(78,22)(90,26)
+                → 空地 (100,28)(108,28)(116,28)
+                → shrine dead-end (128,32)(140,36)(154,40)
+                Kenney stone circle + 3 pillars + lantern at the tip.
+                Player can follow the dirt without getting lost.
+
+Counts (llvmpipe MultiMesh, logged FOREST_PLAN)
+----------------------------------------------
+Decor trees     100  (edge 15, dense clumps 64, ridge 9,
+                hollow 7, trail shoulders 5)  oak 36 / pine 51 / birch 13
+                Replaces the old 70 uniform-random trunks.
+Choppables      20 on the 空地 rim (chop_tree.gd, Y = height_at).
+Litter / logs   6 logs, 3 stumps (glade + dense), 10 ridge rocks.
+Grass / bushes  denser in 密林 only; 林缘 brighter and thinner;
+                ridge sparse; clearing center empty.
+
+Landmark
+--------
+The glade is the forest's "place": stone circle you can walk to,
+one oversized oak, rim of working trees. Shrine is optional, at
+the trail's dead end.
+
+Feet / loop
+-----------
+All Y = height_at / foot_y. Loop verify warps to the 空地 rim
+(108, 35) so the choppable wood loop still runs.
+
+Verify
+------
+shot-forest.png    inside 密林 canopy — clumps, not empty slope
+shot-clearing.png  glade + landmark + choppables on the rim
+shot-edge.png      meadow → 林缘 transition, see into the forest
+shot-map.png       east lobe readable, not a green fur ball

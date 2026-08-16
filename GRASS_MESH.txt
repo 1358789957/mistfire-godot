@@ -1,0 +1,59 @@
+Mistfire Sanctum — 3D grass / plants
+====================================
+2026-08-16 13:42 CST. IslandGrass is still the flat 512 albedo fill.
+Kenney Nature meshes are scattered on top so the ground has modeled tufts.
+
+Meshes (all single MeshInstance3D except flowers = 2 surfaces)
+-------------------------------------------------------------
+assets/kenney_nature/grass_large.glb
+  native AABB  (0.409, 0.254, 0.408)  y0=0
+  scale        2.25  (jitter 0.88–1.16)  → ~0.57 m  knee-high vs KayKit 1.75 m
+  instances    162 MultiMesh  "IslandGrassTufts"
+  material     Mats.nature_leaf()  Color(0.36, 0.60, 0.28)  metallic=0
+               (kit ships mint teal r=0.45 g=0.93 b=0.87 metallic=1)
+
+assets/kenney_nature/plant_bush.glb
+  native AABB  (0.396, 0.244, 0.396)
+  scale        2.85  → ~0.70 m
+  instances    18 MultiMesh  "IslandBushes"
+
+assets/kenney_nature/plant_bushLarge.glb
+  native AABB  (0.374, 0.243, 0.336)
+  scale        3.20  → ~0.78 m
+  instances    9 MultiMesh  "IslandBushesLarge"
+
+assets/kenney_nature/flower_yellowA.glb / flower_redA.glb / flower_purpleA.glb
+  scale        2.55
+  instances    8 MultiMesh  (3 yellow, 3 red, 2 purple)
+  materials    polished in-place (2 surfaces: stem + petal; no override)
+
+Yaw jitter TAU. Y = Island.height_at. No collision (walk / clamp / attacks unchanged).
+
+Placement (Island.contains land only)
+-------------------------------------
+Seeded RNG 20260816. Sources: spawn-feet cluster, 9 m jittered grid,
+path shoulders (village.road_points offset ~3 m), woods ring (34,20),
+village lot backs, coast inward of the sand ribbon, then fill to 150–210.
+
+Skip
+----
+- not Island.contains_v(pos, 2.15)   water + sand ribbon
+- altar dirt disc                    r < 7.35
+- dirt roads                         village.on_road
+- village / keep / house blockers    village.blocks pad 1.15
+- keep courtyard                     x(-6.8, 4.8) z(-45.0, -33.5)
+- pier boards                        x(-54.5, -46.5) z(1.0, 16.5)
+
+Counts this run
+---------------
+grass_large 162   bushes 27 (18+9)   flowers 8
+Band target was ~120–220 grass + ~25 bushes + a few flowers. Not a 2000-blade carpet.
+
+Verify
+------
+shot-grass.png  close at default spawn (7.5, 8.2): several 3D tufts
+                standing off the painted plane, knee-high next to the knight.
+shot-map.png    irregular coast still reads; tufts are not a green fur ball
+                from the overview cam.
+
+DoD: a close screenshot shows modeled grass tufts standing off the ground.

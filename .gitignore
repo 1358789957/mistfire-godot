@@ -1,0 +1,5 @@
+.godot/
+*.translation
+run.log
+shot-*.png
+shot-*.png.import

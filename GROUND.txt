@@ -1,0 +1,51 @@
+Mistfire Sanctum — ground
+=========================
+2026-08-16 13:19 CST. Replaced the 4.15 m BoxMesh MultiMesh stamp
+(431 grass + 82 sand tiles) with one continuous island fill.
+
+Textures
+--------
+assets/ground/grass.png  512x512 RGB  ~203 KB  project-authored seamless
+assets/ground/sand.png   512x512 RGB  ~211 KB  project-authored seamless
+assets/ground/dirt.png   512x512 RGB  ~180 KB  project-authored seamless
+Wrap-around fbm (base freq 32) + fine grain. No hard square border.
+Kenney Nature / Prototype Textures / Fantasy Town kits ship vertex
+colormaps or grid prototypes, not tiling grass — so these are authored
+to the Kenney meadow palette instead of a paid itch pack.
+
+UV
+--
+World-projected: uv = (x / 2.0, z / 2.0) meters. One 512 albedo covers
+2 m. High-frequency detail so the 2 m repeat does not read as a tile.
+
+Mesh that actually drew (llvmpipe + gl_compatibility)
+-----------------------------------------------------
+GROUND_DRAW grass=ArrayMesh sand=ArrayMesh cliff=ArrayMesh
+  grass  Geometry2D.triangulate_polygon(Island.poly())  42 tris
+         y=0.012  explicit UP normals  custom_aabb set
+         MeshInstance3D "IslandGrass"
+  sand   densified coast ribbon  inward ~1 m, outward ~3 m
+         114-vert strip, y=0.018  MeshInstance3D "IslandSand"
+  cliff  densified coast wall ArrayMesh (dirt albedo)
+CSGPolygon3D is wired as a fallback if ArrayMesh surface_count==0;
+it did not run. Foam strip still ArrayMesh. Dirt roads + altar disc
+stay dirt_tex slabs (unchanged).
+
+Material
+--------
+Mats.ground(): StandardMaterial3D  unshaded=false  metallic=0
+cull_disabled  roughness=0.92  texture_filter=NEAREST
+albedo_texture = the 512 PNG  albedo_color slightly lifted (1.22,1.18,1.08)
+so shaded llvmpipe still reads as a meadow.
+
+Gameplay (unchanged)
+--------------------
+Island.contains_xz / contains_v / clamp_xz / poly() / minimap silhouette.
+
+Verify
+------
+shot-ground.png  close, east of the altar: continuous grass field,
+                 no 4 m box grid (column-luma std 0.34, zero seam dips).
+shot-map.png     irregular island, sand as a coast ribbon, not a ring
+                 of boxes. Dirt cross-roads still slabs.
+DoD: you cannot count 4-meter tiles on the grass.

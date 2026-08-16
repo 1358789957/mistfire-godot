@@ -1,0 +1,16 @@
+KayKit Character Pack : Skeletons — FREE tier only
+
+Source: GitHub KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0
+  https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0
+Itch page:
+  https://kaylousberg.itch.io/kaykit-skeletons
+
+License: CC0 (see LICENSE.txt). Free for personal and commercial use.
+
+Free characters in this zip (4 models):
+  Skeleton_Warrior, Skeleton_Rogue, Skeleton_Mage, Skeleton_Minion
+
+NOT included (paid Extra / Source tiers):
+  Skeleton Golem, Necromancer, alt textures, .blend source
+
+Animations: each .glb embeds 95 KayKit clips (Idle, Walking_D_Skeletons, attacks, …).

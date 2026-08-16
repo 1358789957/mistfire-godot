@@ -1,0 +1,46 @@
+Free CC0 art used in Mistfire Sanctum (雾火神殿)
+
+Kenney Fantasy Town Kit 2.0 — https://kenney.nl/assets/fantasy-town-kit (CC0)
+Kenney Castle Kit — https://kenney.nl/assets/castle-kit (CC0)
+Kenney Nature Kit — https://kenney.nl/assets/nature-kit (CC0)
+Quaternius Medieval Village MegaKit STANDARD — https://quaternius.com / OpenGameArt
+  (CC0, Standard / free tier only — not Pro or Source)
+
+KayKit Medieval Hexagon was skipped (itch login / paid Extra-Source tiers).
+
+Ground albedos (assets/ground/grass.png, sand.png, dirt.png) are project-authored
+512px seamless organic tiles (wrap-around fbm + worley). Kenney Nature / Prototype
+Textures / Fantasy Town kits ship vertex colormaps or grid prototypes, not tiling grass.
+Kenney road.glb tiles are the stone streets; dirt roads stay dirt_tex slabs.
+
+KayKit Character Pack : Adventurers 1.0 FREE — https://kaylousberg.itch.io/kaykit-adventurers
+  Godot Asset Library #2129 / GitHub KayKit-Character-Pack-Adventures-1.0 (CC0)
+  Free characters only: Knight, Barbarian, Mage, Rogue, Rogue_Hooded.
+  Extra ($7.95) and Source tiers were not downloaded.
+
+Kenney Foliage Sprites — https://kenney.nl/assets/foliage-sprites (CC0)
+  grass_tuft_a/b/c.png recolored from shaded sprites 0068 / 0069 / 0066.
+
+KayKit Character Pack : Skeletons 1.0 FREE — https://kaylousberg.itch.io/kaykit-skeletons
+  GitHub KayKit-Character-Pack-Skeletons-1.0 (CC0)
+  Free characters only: Warrior, Rogue, Mage, Minion.
+  Extra ($7.95 Golem/Necromancer) and Source tiers were not downloaded.
+
+Kenney RPG Audio — https://kenney.nl/assets/rpg-audio (CC0)
+Kenney Impact Sounds — https://kenney.nl/assets/impact-sounds (CC0)
+Kenney Interface Sounds — https://kenney.nl/assets/interface-sounds (CC0)
+Kenney Music Jingles (HIT + PIZZI subset) — https://kenney.nl/assets/music-jingles (CC0)
+
+Kenney Graveyard Kit 5.0 (selected) — https://kenney.nl/assets/graveyard-kit (CC0)
+  altar-stone/wood, crypt, fire-basket, lanterns, gravestones, ghost.
+
+KayKit Dungeon Remastered 1.0 FREE (selected) — https://kaylousberg.itch.io/kaykit-dungeon-remastered
+  GitHub KayKit-Dungeon-Remastered-1.0 (CC0)
+  chest, chest_gold, barrels, crates, torches, red banners.
+
+Kenney Pirate Kit (selected) — https://kenney.nl/assets/pirate-kit (CC0)
+  shore: rowboat, cannon, palms, chest, barrel, flag.
+
+Skipped after download (wrong genre / 2D):
+  Kenney Tower Defense Kit (sci-fi hex + UFOs)
+  Kenney Medieval RTS (2D sprites, not 3D)

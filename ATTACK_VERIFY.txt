@@ -1,0 +1,31 @@
+Mistfire Sanctum ATTACK VERIFY
+==============================
+Run: each KayKit class vs a dummy. 2026-08-16 13:08 CST. Live Godot 4.7 drive (MISTFIRE_SHOT=atk).
+Near tree = chop (all classes). Otherwise class kit. Runes modify, not replace.
+
+骑士 (剑弧近战)  kind=melee  range=2.2m  dmg=24  cd=0.48s
+  far 12m: miss (hp 80)   near 1.45m: HIT (hp 56)   behind: miss  ticks=1
+野蛮人 (阔斧重击)  kind=melee  range=2.8m  dmg=42  cd=0.80s
+  far 12m: miss (hp 80)   near 1.45m: HIT (hp 38)   behind: miss  ticks=1
+法师 (法杖飞弹)  kind=proj  range=14.0m  dmg=22  cd=0.56s
+  far 12m: HIT (hp 58)   near 1.45m: HIT (hp 58)   behind: -  ticks=1
+盗贼 (双刺连击)  kind=melee  range=1.6m  dmg=13  cd=0.28s
+  far 12m: miss (hp 80)   near 1.45m: HIT (hp 54)   behind: miss  ticks=2
+蒙面盗贼 (弩矢点射)  kind=proj  range=16.0m  dmg=32  cd=0.70s
+  far 12m: HIT (hp 48)   near 1.45m: HIT (hp 48)   behind: -  ticks=1
+
+mage daytime chop (near tree, not projectile): Y  wood=1
+
+Checks
+- mage/hooded hit a dummy they are NOT standing next to (12m): mage=Y hooded=Y
+- knight/barb/rogue do NOT snipe at 12–14m: knight=miss barb=miss rogue=miss
+- melee connects up close: knight=Y barb=Y rogue=Y (rogue ticks=2, want 2)
+- knight cone (behind dummy): miss OK
+- mage still chops wood: Y
+
+Shots
+- shot-atk-mage.png   staff orb in flight toward a 12m dummy
+- shot-atk-bolt.png   crossbow bolt in flight
+- shot-atk-melee.png  knight sword-arc slash
+
+DoD: 法师 vs 骑士 feels different — projectile vs front cone, not the same punch.

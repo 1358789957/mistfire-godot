@@ -1,0 +1,20 @@
+KayKit Character Pack : Adventurers — FREE tier only
+
+Source: Godot Asset Library #2129
+  https://godotengine.org/asset-library/asset/2129
+GitHub mirror (same zip):
+  https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+  commit 672074b73ba276876a19e8816ecdc5241817ab47
+Itch page (Free 2.0 also exists; unpaid wget blocked, used official GitHub/AssetLib zip):
+  https://kaylousberg.itch.io/kaykit-adventurers
+
+License: CC0 (see LICENSE.txt). Free for personal and commercial use.
+
+Free characters in this zip (5 models / 4 unique + hooded variant):
+  Knight, Barbarian, Mage, Rogue, Rogue_Hooded
+
+NOT included (paid Extra / Source tiers):
+  Engineer, Druid, Barbarian_Large, alt textures, .blend source
+
+Animations: each .glb already embeds 76 KayKit clips (Idle, walk, attacks, …).
+The separate KayKit Character Animations zip was not downloaded.

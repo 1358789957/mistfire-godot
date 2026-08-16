@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/quaternius_trees/Textures/Tree_Bark.jpg" id="1_tex"]
+
+[resource]
+resource_name = "WoodInner"
+albedo_color = Color(0.86, 0.72, 0.52, 1)
+albedo_texture = ExtResource("1_tex")
+metallic = 0.0
+roughness = 0.88
+specular_mode = 2
+texture_filter = 0
+uv1_scale = Vector3(2.2, 2.2, 2.2)

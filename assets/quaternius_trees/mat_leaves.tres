@@ -1,0 +1,15 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/quaternius_trees/Textures/Tree_Leaves.png" id="1_tex"]
+
+[resource]
+resource_name = "TreeLeaves"
+transparency = 2
+alpha_scissor_threshold = 0.42
+cull_mode = 2
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = ExtResource("1_tex")
+metallic = 0.0
+roughness = 0.92
+specular_mode = 2
+texture_filter = 0

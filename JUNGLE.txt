@@ -1,0 +1,74 @@
+Mistfire Sanctum — eastern jungle
+=================================
+2026-08-16 14:10 CST. Grew the east woods into a real jungle: bigger
+irregular lobe, height-displaced terrain, authored floor textures,
+trail, canopy, undergrowth. Village / altar / keep / shore / ruins stay put.
+
+Polygon
+-------
+61 verts, clockwise from the N rocky tip. Old E bulge (x<=66) replaced
+by a kidney jungle peninsula with north and SE bays.
+
+  N headland (unchanged) then:
+  (40,50) (56,62) (74,74) (86,64) (94,80) (112,76) (122,62) (136,70)
+  (154,64) (170,54) (184,42) (196,30) (202,16) (198,4) (186,-6) (172,8)
+  (158,-14) (144,-8) (130,-18) (116,-10) (102,2) (88,-8) (74,0) (60,-8)
+  (50,-12) then the old SE notch + S village + W spit + N return.
+
+Bounds   x[-74, 202]  z[-60, 80]
+Width    276 m  =  1.97 × old island width (140 m, x[-74,66])
+Old woods ended at x=66; new cape is x=202 (+136 m / +Z to 80).
+Land walk altar (0,0) → trail (32,16) → (168,36) stays inside the poly.
+Island.contains_xz / contains_v / clamp_xz / minimap use the new poly.
+Night woods spawns still from the east road, Y = height_at + 0.9.
+
+Height
+------
+Island.height_at(x, z)  — sampled 2 m grid ArrayMesh + ConcavePolygonShape3D.
+  village / altar disc / keep / near-town roads   ~ y = 0  (buildings sit)
+  jungle rolling + ridge + hollow                 y ≈ 0.1 … 4.05 m
+  ridge polyline   (48,42)→(82,52)→(120,56)→(158,46)   peak ~4.0 m
+  hollow           (96,10) r≈15 m                     dip ~1.5 m
+  trail valley     10-pt polyline from east road      floor ~0.4–0.9 m
+  ruins            optional low hill ~0.6 m
+  beach            drop toward the sand ribbon
+Walkable slopes (CharacterBody3D floor_max_angle 52°, snap 0.55).
+Collision faces = 8670. Logged range h=[-0.12, 4.05].
+Meadow grass texture stays on the village flats.
+
+Textures (assets/ground/, 512×512 RGB, wraparound fbm)
+------------------------------------------------------
+  jungle_floor.png   dark soil + moss + leaf litter   (~288 KB)
+  jungle_moss.png    green moss                       (~169 KB)
+  jungle_litter.png  brown leaves / twigs             (~187 KB)
+  jungle_dirt.png    darker trail dirt                (~176 KB)
+Jungle mesh UV = world xz / 3.5. Trail cells + ribbon use jungle_dirt.
+Moss overlay on steeper / north-facing jungle faces. Meadow UV xz / 2.0.
+
+Fill
+----
+Decor MultiMesh (llvmpipe-safe, not 400 unique):
+  JungleOak 35   JunglePine 23   JungleBirch 12    total 70
+Choppable (chop_tree.gd, Y on terrain, trail / clearings):  22
+Village lot + rim Quaternius trees unchanged.
+Grass cards 686 (a/b/c) — denser in jungle, skip the trail.
+Bushes 38 (26+12), flowers 8, jungle logs 5, stumps 5, rocks 10.
+Readable dirt trail: east road (31,17) → valley → (168,36).
+
+Lighting
+--------
+When the camera is in Island.in_jungle, day ambient drops
+0.40 → 0.26 and sun 1.42 → 1.12. Night stays the night look
+(slightly darker 0.16 → 0.11). Day/night loop unchanged.
+
+Verify
+------
+shot-map.png           bigger irregular island, jungle lobe obvious
+shot-jungle.png        in the trees, slope / hollow, dark floor
+shot-jungle-trail.png  dirt trail + choppable trees
+shot-tex-jungle.png    close jungle floor (soil / moss / litter)
+
+DoD: from one screenshot a person says "that's a jungle on hills",
+not "a few trees on a green table".
+
+Feet: snap y=height_at(x,z)+0.05 each physics frame on raised terrain so KayKit boots sit on the jungle mesh (not y=0 / waist-deep).
