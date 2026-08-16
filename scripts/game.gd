@@ -2540,7 +2540,8 @@ func _run_day2_verify() -> void:
 	if GameState.phase == GameState.Phase.DAWN:
 		await get_tree().create_timer(DAWN_LEN + 0.35).timeout
 	var day_ok: bool = GameState.phase == GameState.Phase.DAY and GameState.day_index == 2
-	var persist_ok: bool = player != null and player.wood == wood0 and _tower_count() == towers0 and GameState.territory == keep0
+	# Wood may rise from chest pickups / keep tribute; persist means it was not wiped.
+	var persist_ok: bool = player != null and player.wood >= wood0 and _tower_count() == towers0 and GameState.territory == keep0
 	var altar_ok: bool = altar != null and altar.lit == lit0
 	var chest_ok: bool = chest != null and chest.opened == chest0
 	var down1 := 0
