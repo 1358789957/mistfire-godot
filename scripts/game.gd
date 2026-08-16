@@ -1017,7 +1017,7 @@ func _spawn_enemies() -> void:
 
 
 func _show_result(win: bool) -> void:
-	if GameState.phase == GameState.Phase.RESULT:
+	if GameState.phase == GameState.Phase.RESULT or GameState.phase == GameState.Phase.DAWN:
 		return
 	# Night 1 win is not a dead-end: dawn, then Day 2 on the same island.
 	# VERIFY: _show_result(true) -> _begin_dawn (day_index += 1) -> DAY.
