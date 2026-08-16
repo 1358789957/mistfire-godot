@@ -2466,10 +2466,8 @@ func _run_life_verify() -> void:
 	lines.append("night save=%s hp=%.0f hint=%s flash=%s" % [
 		"Y" if saved else "N", float(player.hp), night_hint, flash_s])
 	print("LIFE night save=", saved, " hp=", player.hp, " flash=", flash_s, " hint=", night_hint)
-	await get_tree().create_timer(0.35).timeout
-	await _save_shot("/workspace/shot-life-core.png")
 
-	await get_tree().create_timer(1.25).timeout
+	_atk_clear_mobs()
 	player.invuln = 0.0
 	player.take_hit(80.0)
 	var second_die: bool = float(player.hp) <= 0.0
