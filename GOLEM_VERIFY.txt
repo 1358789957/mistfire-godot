@@ -1,0 +1,6 @@
+Mistfire Sanctum GOLEM VERIFY
+============================
+day spawn=Y hud=符文  机械傀儡  ·  傀儡伐木/守夜
+night persist=Y hint=守夜  Space 攻击  ·  傀儡守夜  ·  火种未燃 hit=Y hp 55->31
+dawn persist=Y day2 persist=Y phase=3 day=2
+DoD: puppet golem chops by day, melee at night, persists through dawn into day 2.
